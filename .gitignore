@@ -1,0 +1,18 @@
+# Secrets - never commit API keys
+.env
+.env.*
+!.env.example
+.Renviron
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+
+# Generated output
+output/
+
+# OS
+.DS_Store
+Thumbs.db
