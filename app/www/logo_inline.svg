@@ -1,0 +1,18 @@
+<svg class="qc-logo" viewBox="0 0 64 64" role="img" aria-label="QuantCompass logo">
+  <defs>
+    <linearGradient id="qcr" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a78d6"/><stop offset=".38" stop-color="#14b8a6"/>
+      <stop offset=".68" stop-color="#f5a524"/><stop offset="1" stop-color="#e8457c"/>
+    </linearGradient>
+  </defs>
+  <path d="M44 44 L57 57" stroke="url(#qcr)" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="29" cy="29" r="23" fill="#fff" stroke="url(#qcr)" stroke-width="7"/>
+  <g stroke="#1b1f3b" stroke-width="2.2" stroke-linecap="round" opacity=".28">
+    <path d="M29 9.5v4"/><path d="M29 44.5v4"/><path d="M9.5 29h4"/><path d="M44.5 29h4"/>
+  </g>
+  <g class="qc-needle">
+    <path d="M29 13 L34.5 29 H29 Z" fill="#e8457c"/><path d="M29 13 L23.5 29 H29 Z" fill="#ff7a59"/>
+    <path d="M29 45 L23.5 29 H29 Z" fill="#2a78d6"/><path d="M29 45 L34.5 29 H29 Z" fill="#1d5bb0"/>
+    <circle cx="29" cy="29" r="3.2" fill="#1b1f3b"/>
+  </g>
+</svg>
