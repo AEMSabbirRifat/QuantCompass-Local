@@ -10,8 +10,9 @@
 .Rproj.user/
 *.Rproj
 
-# Generated output
+# Generated output (may contain your data)
 output/
+results/
 
 # OS
 .DS_Store

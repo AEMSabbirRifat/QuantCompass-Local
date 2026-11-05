@@ -1,102 +1,87 @@
 # QuantCompass Local
 
-**Guided, academically sound statistics for students: from your hypotheses to thesis-ready results, run on your own computer with R.**
+**Click-only, academically sound statistics for students. Upload your data, describe your hypotheses in plain words, and get thesis-ready results, charts and the exact R script. No coding.**
 
-QuantCompass is built for students and early researchers who have collected data but are not sure which test to run. You bring the data and your hypotheses; QuantCompass checks the data, suggests the tests that fit your design, tells you when an analysis is *not* possible (and what to do instead), runs vetted R code, and hands you the exact script that produced your results for your thesis appendix.
+For each hypothesis QuantCompass **screens the assumptions first**, **chooses the parametric or non-parametric test by fixed, published rules**, runs it, draws the charts, and writes a **Word + HTML report** explaining every decision, with a paragraph you can paste straight into your thesis.
 
 > **Two versions, one engine**
-> - **QuantCompass Local** (this repo): runs on your computer with R. Most robust; your data never leaves your machine.
-> - **[QuantCompass Web](https://github.com/AEMSabbirRifat/QuantCompass-Web)**: will run in the browser with no installation (R via WebAssembly).
+> - **QuantCompass Local** (this repo): runs on your computer. Your data never leaves it.
+> - **[QuantCompass Web](https://github.com/AEMSabbirRifat/QuantCompass-Web)**: the same app in the browser, no installation (in development).
 
-**Status: v0.1, Stage 1 (statistical core).** The engine, 13 analysis templates and the validation suite are working. The guided interface and AI explanations come next; see [ROADMAP.md](ROADMAP.md).
+**Status: v0.2 pilot.** Feedback welcome via Issues.
 
 ---
 
-## What makes it different
+## Start in 5 steps (Windows, macOS, Linux)
 
-| | QuantCompass |
-|---|---|
-| **Starts from your hypotheses** | Maps each hypothesis to the right sheet, columns and tests, instead of making you pick from a menu. |
-| **Says "not possible" and explains why** | Blocks or warns on infeasible designs: too few cases, too many predictors, categorical outcomes in mean tests, small expected counts. |
-| **Same code, same result** | The script you receive is the file that ran. Re-running it reproduces your numbers exactly. |
-| **Validated** | Every template is tested against published R reference results ([validation/](validation/)). |
-| **Statistics without AI** | All numbers come from R. AI (optional, your own key) only phrases questions and explanations. |
-| **Thesis-ready** | APA-style result sentences, effect sizes with confidence intervals, assumption checks, appendix code. |
+1. **Install R** (free): [cran.r-project.org](https://cran.r-project.org/) - "Download R for Windows" - "base" - run the installer.
+2. **Install RStudio Desktop** (free): [posit.co/download/rstudio-desktop](https://posit.co/download/rstudio-desktop/).
+3. **Download QuantCompass**: green **Code** button above - **Download ZIP** - right-click the ZIP - **Extract All**.
+4. **Open `START-QuantCompass.R`** in RStudio (inside the extracted folder; if there is a folder inside a folder, open the inner one).
+5. Click **Source** (top right of the script window). The first start installs what it needs (a few minutes, once). The app then opens in your browser.
 
-## Analyses in v0.1
+That's all. Everything else is clicking.
 
-| Goal | Recommended test | Alternative (chosen automatically when assumptions fail) |
+## How it works (in the app)
+
+| Step | What you do | What QuantCompass does |
 |---|---|---|
-| Describe variables | Descriptive statistics | - |
-| Compare 2 groups | Welch's t-test + Cohen's d | Mann-Whitney U + rank-biserial r |
-| Compare 3+ groups | Welch's ANOVA + Games-Howell | Kruskal-Wallis + Holm-corrected pairs |
-| Compare 2 measurements of the same people | Paired t-test + d_z | Wilcoxon signed-rank |
-| Relationship of 2 numeric variables | Pearson r | Spearman rho |
-| Relationship of 2 categorical variables | Chi-square + Cramer's V | Fisher's exact test (small counts) |
-| Predict a numeric outcome | Multiple linear regression (VIF, Breusch-Pagan) | - |
-| Predict a yes/no outcome | Binary logistic regression (odds ratios) | - |
-| Scale reliability | Cronbach's alpha + item analysis (reverse-coding) | - |
+| **1. Your data** | Choose your CSV or Excel file, pick the sheet | Checks the data (missing-value codes like 99, decimal commas, text in number columns) and offers one-click fixes. Reads friendly names from a "Codebook" sheet if you have one. |
+| **2. Describe dataset** | One click (optional: split by group) | Tables of all variables, histograms, bar charts, correlation heatmap, missing data, and a ready-to-paste summary paragraph. |
+| **3. Hypotheses** | **Option A**: choose "Compare groups / Before vs after / Relationship / Association / Predict / Scale reliability" and pick columns from lists. **Option B**: fill the Excel hypothesis template (one row per hypothesis) and upload it. | Shows each hypothesis as a plain sentence, e.g. *"We will test whether house value differs between homes near the river and homes not near the river."* You confirm with **Yes, add it**. |
+| **4. Results** | Click **Run all hypotheses** | For each hypothesis: assumption screening, test choice, analysis, charts, report and script. Everything is saved in the `results` folder. |
 
-## Quick start
+## What each hypothesis report contains
 
-1. Install [R](https://cran.r-project.org/) (4.1 or newer). RStudio is optional.
-2. Install the two required packages: `install.packages(c("readxl", "testthat"))`
-3. Download this repo (green **Code** button, then **Download ZIP**) and unzip it.
-4. Open R in the unzipped folder and run:
+1. **Data used**: file, variables, cases analysed and excluded
+2. **Assumption screening**: each check, its result and what it means in plain words
+3. **Assumption charts**: histograms with normal curves, Q-Q plots, boxplots, scatterplots, residual plots, VIF
+4. **Decision**: parametric or non-parametric, the rule that decided it, and the references
+5. **Result (ready to paste)**: an APA-style paragraph plus APA tables
+6. **Result charts**: means with 95% CI, boxplots, scatterplots, coefficient and odds-ratio plots
+7. **Plain-language explanation** of the process and the result
+8. **Appendix**: the exact R script that produced every number (rerun it to reproduce them)
 
-```r
-source("examples/run_example.R")
-```
+A **summary report** combines all hypotheses and includes a software/AI disclosure paragraph you can adapt for your thesis declaration.
 
-This walks through the example workbook (`examples/example_survey.xlsx`, synthetic data with 3 sheets): sheet selection, data check, three hypotheses, test suggestions, results, and the reproducible scripts saved in `output/`.
+## Decision rules (fixed in advance)
 
-### Use it on your own data
+| Design | Parametric (if assumptions hold) | Non-parametric (if not) |
+|---|---|---|
+| 2 independent groups | Welch's t-test | Mann-Whitney U |
+| 3+ groups | Welch's ANOVA + Games-Howell | Kruskal-Wallis + Holm-corrected pairs |
+| Same cases measured twice | Paired t-test | Wilcoxon signed-rank |
+| Two numeric variables | Pearson r | Spearman rho |
+| Two categorical variables | Chi-square | Fisher's exact test |
+| Predict a numeric outcome | Linear regression | HC3 robust standard errors if variance is not constant |
+| Predict a yes/no outcome | Logistic regression | Warnings for few events per predictor or separation |
+| Scale | Cronbach's alpha + item analysis | - |
 
-```r
-options(qc.root = normalizePath(".")); source("engine/load.R")
-qc_sheets("my_data.xlsx")                       # 1. which sheet?
-data <- qc_read("my_data.xlsx", "Sheet1")
-qc_profile(data)$issues                         # 2. problems to fix first
-opts <- qc_suggest(data, list(goal = "difference", outcome = "satisfaction", group = "gender"))
-opts[[1]]$why; opts[[1]]$messages               # 3. why this test, any warnings
-out <- qc_analyse("my_data.xlsx", "Sheet1", opts[[1]], "H1: Satisfaction differs by gender")
-out$result$apa                                  # 4. APA-style result
-writeLines(out$script, "H1_script.R")           # 5. exact script for your appendix
-```
-
-Goals: `describe`, `difference`, `paired_difference`, `relationship`, `association`, `prediction`, `reliability`.
+Normality is judged by sample size following Kim (2013): Shapiro-Wilk below n = 50, skewness/kurtosis z-scores for n = 50-300, absolute skewness/kurtosis above 300. Mean-based tests are kept when normality fails but every group has n >= 30 and no extreme outliers (central limit theorem). Rating-scale items always use rank-based tests. You can override the automatic choice; the report then records it as your decision.
 
 ## Validation
 
-```bash
-Rscript validation/run_validation.R
+`Rscript validation/run_validation.R` checks every analysis against reference results from the R documentation, every decision rule, and that every report, chart and script is produced. It runs automatically on GitHub after every change.
+
+## For advanced users
+
+The engine can be used from R directly:
+
+```r
+options(qc.root = normalizePath(".")); source("engine/load.R")
+ctx <- list(path = "my_data.csv", sheet = NULL, fixes = character(), labels = list(), level_labels = list(), out_dir = "results/my_run")
+qc_run_hypothesis(list(id = "H1", text = "Satisfaction differs by gender",
+                       spec = list(goal = "difference", outcome = "satisfaction", group = "gender")), ctx)
 ```
 
-Checks every template against reference values from the R documentation (e.g. `?t.test` sleep data: t = -1.8608, df = 17.776, p = .079), plus identity checks against R's own implementations, the rules engine and the profiler. It runs automatically on every change (GitHub Actions).
-
-## Repository layout (WAT: Workflows - Agents - Tools)
-
-```
-workflows/    step-by-step procedures (SOPs) the app follows
-engine/       tools: file reading, profiler, rules engine, render & run
-templates/    tools: one vetted R script per analysis
-validation/   reference tests every release must pass
-examples/     synthetic example workbook + end-to-end script
-ai/           (Stage 5) optional AI provider adapters - bring your own key
-```
-
-## Using AI (optional, coming in Stage 5)
-
-QuantCompass works fully without AI. When AI features arrive, you can connect **your own** API key (Gemini, Mistral, Claude, OpenAI-compatible, or a free local model via Ollama). Copy `.env.example` to `.env` and add your key. **Never commit `.env`.** Only summaries such as variable names and results are sent to the AI, never your raw data.
+See `examples/run_example.R`. Layout: `app/` (click app), `engine/` (reading, profiling, assumption screening, rules, charts, reports), `templates/` (one vetted R script per analysis), `validation/`, `examples/`, `workflows/` (step procedures).
 
 ## Academic use
 
-- Results are computed by R; QuantCompass does not guarantee that your study design is appropriate. Check with your supervisor.
-- If you use QuantCompass in a thesis, say so in your methods section and include the generated script in the appendix.
-- References for each test are listed in the rules engine (`engine/rules.R`) and in each suggestion's `references` field.
+- QuantCompass computes results; it cannot judge whether your study design fits your research question. Check with your supervisor.
+- Mention QuantCompass and R in your methods section and include the generated scripts in your appendix.
+- No AI computes any number. Optional AI explanations (bring your own key) are planned.
 
 ## License
 
-Code: GPL-3.0. Explanatory content (from Stage 4): CC BY-SA 4.0, building on OpenIntro Statistics (CC BY-SA).
-
-Made by [Sabbir Rifat](https://github.com/AEMSabbirRifat) - feedback and contributions welcome via Issues.
+Code: GPL-3.0. Made by [Sabbir Rifat](https://github.com/AEMSabbirRifat).
