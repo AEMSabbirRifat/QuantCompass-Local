@@ -24,7 +24,7 @@ pw <- stats::pairwise.wilcox.test(y, g, p.adjust.method = "holm", exact = FALSE)
 # ---- 6. Results ----
 sig <- if (kw$p.value < .05) "a statistically significant" else "no statistically significant"
 apa <- sprintf("A Kruskal-Wallis test showed %s difference in %s across the %d groups of %s, H(%d) = %s, p %s, epsilon-squared = %s, N = %d.",
-  sig, outcome, k, group, as.integer(kw$parameter), qc_fmt(H), qc_fmt_p(kw$p.value), qc_fmt_r(eps2), N)
+  sig, qc_lab(outcome), k, qc_lab(group), as.integer(kw$parameter), qc_fmt(H), qc_fmt_p(kw$p.value), qc_fmt_r(eps2), N)
 result <- list(test = "kruskal_wallis", n_used = cc$n_used, n_excluded = cc$n_excluded,
   groups = data.frame(group = levels(g), n = as.vector(table(g)), median = as.vector(tapply(y, g, stats::median))),
   H = H, df = unname(kw$parameter), p = kw$p.value, epsilon2 = eps2,

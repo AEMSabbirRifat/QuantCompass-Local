@@ -21,7 +21,7 @@ rho_ci <- tanh(atanh(rho) + c(-1, 1) * stats::qnorm(.975) * se)
 # ---- 4. Results ----
 sig <- if (ct$p.value < .05) "a statistically significant" else "no statistically significant"
 apa <- sprintf("A Spearman rank correlation showed %s association between %s and %s, rs(%d) = %s, 95%% CI [%s, %s], p %s.",
-  sig, var1, var2, N - 2L, qc_fmt_r(rho), qc_fmt_r(rho_ci[1]), qc_fmt_r(rho_ci[2]), qc_fmt_p(ct$p.value))
+  sig, qc_lab(var1), qc_lab(var2), N - 2L, qc_fmt_r(rho), qc_fmt_r(rho_ci[1]), qc_fmt_r(rho_ci[2]), qc_fmt_p(ct$p.value))
 result <- list(test = "correlation_spearman", n_used = cc$n_used, n_excluded = cc$n_excluded,
   rho = rho, rho_ci = rho_ci, p = ct$p.value, apa = apa, session = qc_session())
 cat(apa, "\n")

@@ -20,7 +20,7 @@ ct <- stats::cor.test(x, y, method = "pearson")
 # ---- 5. Results ----
 sig <- if (ct$p.value < .05) "a statistically significant" else "no statistically significant"
 apa <- sprintf("There was %s correlation between %s and %s, r(%d) = %s, 95%% CI [%s, %s], p %s, N = %d.",
-  sig, var1, var2, as.integer(ct$parameter), qc_fmt_r(ct$estimate),
+  sig, qc_lab(var1), qc_lab(var2), as.integer(ct$parameter), qc_fmt_r(ct$estimate),
   qc_fmt_r(ct$conf.int[1]), qc_fmt_r(ct$conf.int[2]), qc_fmt_p(ct$p.value), length(x))
 result <- list(test = "correlation_pearson", n_used = cc$n_used, n_excluded = cc$n_excluded,
   r = unname(ct$estimate), r_ci = as.numeric(ct$conf.int), t = unname(ct$statistic),

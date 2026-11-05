@@ -28,7 +28,7 @@ sig <- if (mw$p.value < .05) "a statistically significant" else "no statisticall
 apa <- sprintf(paste0(
   "A Mann-Whitney U test showed %s difference in %s between %s (Mdn = %s, n = %d) and %s (Mdn = %s, n = %d), ",
   "U = %s, p %s, rank-biserial r = %s."),
-  sig, outcome, lv[1], qc_fmt(stats::median(y1)), n1, lv[2], qc_fmt(stats::median(y2)), n2,
+  sig, qc_lab(outcome), qc_level_lab(group, lv[1]), qc_fmt(stats::median(y1)), n1, qc_level_lab(group, lv[2]), qc_fmt(stats::median(y2)), n2,
   qc_fmt(U, 1), qc_fmt_p(mw$p.value), qc_fmt_r(r_rb))
 result <- list(
   test = "mann_whitney", n_used = cc$n_used, n_excluded = cc$n_excluded,

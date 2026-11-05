@@ -32,8 +32,8 @@ sig <- if (tt$p.value < .05) "a statistically significant" else "no statisticall
 apa <- sprintf(paste0(
   "A Welch's independent-samples t-test showed %s difference in %s between %s (M = %s, SD = %s, n = %d) ",
   "and %s (M = %s, SD = %s, n = %d), t(%s) = %s, p %s, d = %s, 95%% CI [%s, %s]."),
-  sig, outcome, lv[1], qc_fmt(mean(y1)), qc_fmt(stats::sd(y1)), n1,
-  lv[2], qc_fmt(mean(y2)), qc_fmt(stats::sd(y2)), n2,
+  sig, qc_lab(outcome), qc_level_lab(group, lv[1]), qc_fmt(mean(y1)), qc_fmt(stats::sd(y1)), n1,
+  qc_level_lab(group, lv[2]), qc_fmt(mean(y2)), qc_fmt(stats::sd(y2)), n2,
   qc_fmt(tt$parameter), qc_fmt(tt$statistic), qc_fmt_p(tt$p.value),
   qc_fmt(cohen_d), qc_fmt(d_ci[1]), qc_fmt(d_ci[2]))
 result <- list(

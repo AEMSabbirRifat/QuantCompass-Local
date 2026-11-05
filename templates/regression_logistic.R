@@ -22,6 +22,12 @@ coefs <- as.data.frame(s$coefficients); names(coefs) <- c("b", "se", "z", "p")
 wald <- stats::confint.default(model)                  # Wald 95% CIs
 coefs$odds_ratio <- exp(coefs$b); coefs$or_ci_low <- exp(wald[, 1]); coefs$or_ci_high <- exp(wald[, 2])
 
+# Readable names for model terms, e.g. "remote work (remote workers vs on-site workers)"
+term_lab <- function(r) { r <- gsub("`", "", r); if (r == "(Intercept)") return(r)
+  for (v in predictors) if (is.factor(d[[v]]) && startsWith(r, v) && r != v) {
+    l <- substring(r, nchar(v) + 1); return(sprintf("%s (%s vs %s)", qc_lab(v), qc_level_lab(v, l), qc_level_lab(v, levels(d[[v]])[1]))) }
+  qc_lab(r) }
+coefs$label <- sapply(rownames(coefs), term_lab)
 # ---- 4. Model fit ----
 n <- nrow(d); ll1 <- as.numeric(stats::logLik(model))
 null <- stats::glm(.y ~ 1, data = d, family = stats::binomial()); ll0 <- as.numeric(stats::logLik(null))
@@ -35,10 +41,10 @@ pred <- as.integer(stats::fitted(model) >= .5); accuracy <- mean(pred == d$.y)
 # ---- 5. Results ----
 sig <- if (p_model < .05) "statistically significant" else "not statistically significant"
 apa <- sprintf("A binary logistic regression predicting %s = '%s' from %s was %s, chi-square(%d) = %s, p %s, Nagelkerke R-squared = %s, N = %d (%d events, %.1f events per predictor term).",
-  outcome, positive, paste(predictors, collapse = ", "), sig, as.integer(lr_df), qc_fmt(lr),
+  qc_lab(outcome), qc_level_lab(outcome, positive), paste(sapply(predictors, qc_lab), collapse = ", "), sig, as.integer(lr_df), qc_fmt(lr),
   qc_fmt_p(p_model), qc_fmt_r(r2_nag), n, sum(d$.y), epv)
 result <- list(test = "regression_logistic", n_used = cc$n_used, n_excluded = cc$n_excluded,
   coefficients = coefs, lr_chisq = lr, df = lr_df, p = p_model, r2_cox_snell = r2_cs,
   r2_nagelkerke = r2_nag, events_per_term = epv, accuracy_at_0.5 = accuracy,
   apa = apa, session = qc_session())
-cat(apa, "\n"); print(round(coefs, 3))
+cat(apa, "\n"); print(coefs, digits = 3)

@@ -30,9 +30,9 @@ cramers_v <- sqrt(unname(chi$statistic) / (N * (min(dim(tab)) - 1)))
 sig <- if (p_value < .05) "a statistically significant" else "no statistically significant"
 apa <- if (use_fisher) sprintf(
   "Because %s%% of expected cell counts were below 5, Fisher's exact test was used. It showed %s association between %s and %s, p %s, Cramer's V = %s, N = %d.",
-  round(100 * share_low), sig, var1, var2, qc_fmt_p(p_value), qc_fmt_r(cramers_v), N) else sprintf(
+  round(100 * share_low), sig, qc_lab(var1), qc_lab(var2), qc_fmt_p(p_value), qc_fmt_r(cramers_v), N) else sprintf(
   "A chi-square test of independence showed %s association between %s and %s, chi-square(%d, N = %d) = %s, p %s, Cramer's V = %s.",
-  sig, var1, var2, as.integer(chi$parameter), N, qc_fmt(chi$statistic), qc_fmt_p(p_value), qc_fmt_r(cramers_v))
+  sig, qc_lab(var1), qc_lab(var2), as.integer(chi$parameter), N, qc_fmt(chi$statistic), qc_fmt_p(p_value), qc_fmt_r(cramers_v))
 result <- list(test = "chisq_independence", n_used = cc$n_used, n_excluded = cc$n_excluded,
   table = tab, row_percent = prop.table(tab, 1) * 100, expected = expected,
   chisq = unname(chi$statistic), df = unname(chi$parameter), p_chisq = chi$p.value,
