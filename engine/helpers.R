@@ -27,4 +27,14 @@ qc_shapiro <- function(y) {
 }
 qc_session <- function() list(engine = "QuantCompass engine 0.1.0",
                               r_version = R.version.string, date = format(Sys.Date()))
+# Friendly names for variables and categories (set by QuantCompass; empty = use column names)
+qc_lab <- function(v) {
+  l <- if (exists("qc_labels", inherits = TRUE)) get("qc_labels", inherits = TRUE)[[v]] else NULL
+  if (is.null(l) || !nzchar(l)) v else l
+}
+qc_level_lab <- function(v, level) {
+  m <- if (exists("qc_level_labels", inherits = TRUE)) get("qc_level_labels", inherits = TRUE)[[v]] else NULL
+  key <- as.character(level)
+  if (!is.null(m) && key %in% names(m) && nzchar(m[[key]])) m[[key]] else key
+}
 # ---- end of helpers ----

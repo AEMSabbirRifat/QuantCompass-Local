@@ -28,22 +28,24 @@ qc_csv_format <- function(path) {
   if (semis > commas) list(sep = ";", dec = ",") else list(sep = ",", dec = ".")
 }
 
-qc_load_code <- function(path, sheet = NULL) {
+qc_load_code <- function(path, sheet = NULL, fixes = character()) {
   file <- basename(path)
   na <- paste0("c(", paste0('"', qc_na_strings, '"', collapse = ", "), ")")
   ext <- tolower(tools::file_ext(path))
   if (ext %in% c("xlsx", "xls")) {
     if (is.null(sheet)) sheet <- readxl::excel_sheets(path)[1]
-    sprintf('data <- as.data.frame(readxl::read_excel("%s", sheet = "%s", na = %s))', file, sheet, na)
+    code <- sprintf('data <- as.data.frame(readxl::read_excel("%s", sheet = "%s", na = %s))', file, sheet, na)
   } else {
     f <- qc_csv_format(path)
-    sprintf('data <- utils::read.csv("%s", sep = "%s", dec = "%s", na.strings = %s, check.names = FALSE)',
+    code <- sprintf('data <- utils::read.csv("%s", sep = "%s", dec = "%s", na.strings = %s, check.names = FALSE)',
             file, f$sep, f$dec, na)
   }
+  if (length(fixes)) code <- c(code, "# Data fixes chosen in QuantCompass (recorded so the script reproduces them)", fixes)
+  code
 }
 
-qc_read <- function(path, sheet = NULL) {
-  code <- qc_load_code(path, sheet)
+qc_read <- function(path, sheet = NULL, fixes = character()) {
+  code <- qc_load_code(path, sheet, fixes)
   env <- new.env()
   old <- setwd(dirname(normalizePath(path))); on.exit(setwd(old))
   eval(parse(text = code), envir = env)

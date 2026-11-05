@@ -190,6 +190,7 @@ qc_rule_prediction <- function(data, spec) {
   if (n <= terms + 1) return(qc_block(sprintf("%d complete cases for %d model terms: the model cannot be estimated.", n, terms),
       "Use fewer predictors, or collect more data."))
   p <- list(OUTCOME = spec$outcome, PREDICTORS_VEC = spec$predictors)
+  if (yt != "binary") p$ROBUST <- if (isTRUE(spec$robust)) "TRUE" else "FALSE"
   if (yt == "binary") {
     yy <- d[[spec$outcome]]; events <- min(table(yy)); epv <- events / terms
     msgs <- character(); status <- "ok"

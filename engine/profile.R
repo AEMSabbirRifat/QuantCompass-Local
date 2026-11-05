@@ -22,8 +22,8 @@ qc_vartype <- function(x) {
 qc_profile <- function(data) {
   n <- nrow(data)
   issues <- list()
-  add <- function(col, level, msg) issues[[length(issues) + 1]] <<-
-    data.frame(column = col, level = level, message = msg)
+  add <- function(col, level, msg, fix = NA_character_) issues[[length(issues) + 1]] <<-
+    data.frame(column = col, level = level, message = msg, fix = fix)
 
   cols <- lapply(names(data), function(nm) {
     x <- data[[nm]]
@@ -31,13 +31,15 @@ qc_profile <- function(data) {
     nonmiss <- x[!is.na(x)]
     if (is.character(x) && length(nonmiss) > 0) {
       if (all(grepl("^-?[0-9]+,[0-9]+$|^-?[0-9]+$", nonmiss)) && any(grepl(",", nonmiss)))
-        add(nm, "fix", "Numbers use a decimal comma (e.g. 3,5) and were read as text.")
+        add(nm, "fix", "Numbers use a decimal comma (e.g. 3,5) and were read as text.",
+            sprintf('data[["%s"]] <- as.numeric(sub(",", ".", data[["%s"]], fixed = TRUE))', nm, nm))
       else {
         num_share <- mean(!is.na(suppressWarnings(as.numeric(nonmiss))))
         if (num_share >= 0.8 && num_share < 1)
           add(nm, "fix", sprintf("Mostly numbers, but %d entries are text (e.g. '%s').",
               sum(is.na(suppressWarnings(as.numeric(nonmiss)))),
-              nonmiss[is.na(suppressWarnings(as.numeric(nonmiss)))][1]))
+              nonmiss[is.na(suppressWarnings(as.numeric(nonmiss)))][1]),
+              sprintf('data[["%s"]] <- suppressWarnings(as.numeric(data[["%s"]]))  # text entries become missing', nm, nm))
       }
     }
     if (is.numeric(x) && length(nonmiss) > 5) {
@@ -46,7 +48,7 @@ qc_profile <- function(data) {
         rest <- nonmiss[nonmiss != cd]
         if (length(rest) > 2 && (cd >= max(rest) * 1.5 || cd < 0 && min(rest) >= 0))
           add(nm, "fix", sprintf("Value %s appears %d times and looks like a missing-value code.",
-              cd, sum(nonmiss == cd)))
+              cd, sum(nonmiss == cd)), sprintf('data[["%s"]][data[["%s"]] %%in%% %s] <- NA', nm, nm, cd))
       }
     }
     if (type == "constant") add(nm, "info", "Only one value - cannot be analysed.")
@@ -69,7 +71,7 @@ qc_profile <- function(data) {
   names(batteries) <- names(tab[tab >= 3])
 
   issues <- if (length(issues)) do.call(rbind, issues) else
-    data.frame(column = character(), level = character(), message = character())
+    data.frame(column = character(), level = character(), message = character(), fix = character())
   verdict <- if (n == 0 || ncol(data) < 1) "blocked" else
     if (any(issues$level == "fix")) "needs_fixing" else "ready"
   list(n_rows = n, n_columns = ncol(data), columns = cols, batteries = batteries,
