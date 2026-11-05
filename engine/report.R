@@ -273,3 +273,50 @@ qc_write_report <- function(title, sections, out_base) {
   print(doc, target = paste0(out_base, ".docx"))
   c(html = paste0(out_base, ".html"), docx = paste0(out_base, ".docx"))
 }
+
+# ---- Formal hypotheses (H1 / H0) and the decision after the test ----
+qc_cap_first <- function(x) paste0(toupper(substr(x, 1, 1)), substring(x, 2))
+qc_hypothesis_pair <- function(spec, data, hid = "H1") {
+  L <- qc_lab
+  p <- switch(spec$goal,
+    difference = {
+      lv <- levels(factor(data[[spec$group]]))
+      if (length(lv) == 2) { a <- qc_group_name(spec$group, lv[1]); b <- qc_group_name(spec$group, lv[2])
+        list(h1 = sprintf("%s differs between %s and %s.", L(spec$outcome), a, b),
+             h0 = sprintf("%s does not differ between %s and %s.", L(spec$outcome), a, b))
+      } else list(h1 = sprintf("%s differs between at least two of the %d groups of %s.", L(spec$outcome), length(lv), L(spec$group)),
+                  h0 = sprintf("%s is the same in all %d groups of %s.", L(spec$outcome), length(lv), L(spec$group)))
+    },
+    paired_difference = list(h1 = sprintf("Scores differ between %s and %s.", L(spec$var1), L(spec$var2)),
+                             h0 = sprintf("There is no difference between %s and %s.", L(spec$var1), L(spec$var2))),
+    relationship = list(h1 = sprintf("%s is related to %s (the correlation is not zero).", L(spec$var1), L(spec$var2)),
+                        h0 = sprintf("%s is not related to %s (the correlation is zero).", L(spec$var1), L(spec$var2))),
+    association = list(h1 = sprintf("%s and %s are associated.", L(spec$var1), L(spec$var2)),
+                       h0 = sprintf("%s and %s are independent (not associated).", L(spec$var1), L(spec$var2))),
+    prediction = { pr <- qc_and(sapply(spec$predictors, L)); several <- length(spec$predictors) > 1
+      list(h1 = sprintf("%s %s %s.", pr, if (several) "together predict" else "predicts", L(spec$outcome)),
+           h0 = sprintf("%s %s %s (all coefficients are zero).", pr, if (several) "do not predict" else "does not predict", L(spec$outcome))) },
+    reliability = list(h1 = sprintf("The %d items form a reliable scale (Cronbach's alpha of at least .70).", length(spec$items)),
+                       h0 = sprintf("The %d items do not form a reliable scale (Cronbach's alpha below .70).", length(spec$items)),
+                       note = "Reliability is judged against the conventional .70 benchmark, not with a significance test."),
+    list(h1 = "Not applicable.", h0 = "Not applicable."))
+  p$h1 <- qc_cap_first(p$h1); p$h0 <- qc_cap_first(p$h0)
+  if (is.null(p$note)) p$note <- "Tested two-sided at a significance level of alpha = .05."
+  p$lab1 <- hid; p$lab0 <- paste0("H0", sub("^H", "", hid))
+  p
+}
+
+qc_decision_line <- function(id, r, pair) {
+  if (id == "reliability_alpha") {
+    ok <- r$alpha >= .70
+    return(list(rejected = ok, short = if (ok) paste(pair$lab1, "supported") else paste(pair$lab1, "not supported"),
+      text = if (ok) sprintf("Decision: %s is supported. Cronbach's alpha = %s reaches the conventional benchmark of .70 (no significance test is involved).", pair$lab1, qc_fmt_r(r$alpha))
+             else sprintf("Decision: %s is not supported. Cronbach's alpha = %s is below the conventional benchmark of .70.", pair$lab1, qc_fmt_r(r$alpha))))
+  }
+  p <- r[["p"]]
+  if (is.null(p) || is.na(p)) return(list(rejected = NA, short = "No decision", text = "Decision: no significance test was performed."))
+  if (p < .05) list(rejected = TRUE, short = sprintf("%s rejected - %s supported", pair$lab0, pair$lab1),
+    text = sprintf("Decision: %s is rejected (p %s, below the significance level of .05). The data support %s: %s", pair$lab0, qc_fmt_p(p), pair$lab1, pair$h1))
+  else list(rejected = FALSE, short = sprintf("%s not rejected", pair$lab0),
+    text = sprintf("Decision: %s is not rejected (p %s, not below the significance level of .05). The data do not provide enough evidence for %s. Not rejecting %s does not prove that it is true.", pair$lab0, qc_fmt_p(p), pair$lab1, pair$lab0))
+}

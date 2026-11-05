@@ -44,13 +44,19 @@ qc_run_hypothesis <- function(h, ctx) {
     paste("DECISION:", qc_test_labels[[id]]), strwrap(paste("REASON:", screen$decision$reason), 85))
   out <- qc_analyse(ctx$path, ctx$sheet, opt, paste(h$id, "-", h$text), ctx$fixes, ctx$labels, ctx$level_labels, notes)
   r <- out$result; r$.group <- eff$group
+  pair <- qc_hypothesis_pair(eff, data, h$id); dec <- qc_decision_line(id, r, pair)
   hdir <- file.path(ctx$out_dir, h$id); figdir <- file.path(hdir, "figures"); dir.create(figdir, recursive = TRUE, showWarnings = FALSE)
   afigs <- tryCatch(qc_save_figures(qc_assumption_figures(data, eff, screen), figdir, h$id, 1), error = function(e) list())
   rfigs <- tryCatch(qc_save_figures(qc_result_figures(data, eff, screen, r), figdir, h$id, length(afigs) + 1), error = function(e) list())
   script_file <- file.path(hdir, paste0(h$id, "_script.R")); writeLines(out$script, script_file)
-  tables <- qc_result_tables(id, r); paragraph <- qc_paste_paragraph(h, screen, r); explanation <- qc_explain(id, r, eff)
+  tables <- qc_result_tables(id, r); paragraph <- paste(qc_paste_paragraph(h, screen, r), sub("^Decision: ", "", dec$text))
+  explanation <- qc_explain(id, r, eff)
   vars <- unique(c(eff$outcome, eff$group, eff$var1, eff$var2, eff$predictors, eff$items))
   sections <- list(
+    list(heading = "Hypotheses", items = list(list(type = "list", items = c(
+      sprintf("Your hypothesis (as entered): %s", sub("\\.?$", ".", h$text)),
+      sprintf("Research hypothesis (%s): %s", pair$lab1, pair$h1),
+      sprintf("Null hypothesis (%s): %s", pair$lab0, pair$h0), pair$note)))),
     list(heading = "1. Data used", items = list(
       list(type = "p", text = h$sentence),
       list(type = "list", items = c(sprintf("File: %s%s", basename(ctx$path), if (!is.null(ctx$sheet)) paste0(" (sheet: ", ctx$sheet, ")") else ""),
@@ -64,7 +70,7 @@ qc_run_hypothesis <- function(h, ctx) {
       list(type = "p", text = sprintf("Selected test: %s (%s).", qc_test_labels[[id]], screen$decision$family)),
       list(type = "p", text = screen$decision$reason),
       list(type = "list", items = c("Rules are fixed in advance and based on:", screen$decision$references)))),
-    list(heading = "5. Result (ready to paste)", items = c(list(list(type = "paste", text = paragraph)),
+    list(heading = "5. Result (ready to paste)", items = c(list(list(type = "paste", text = paragraph), list(type = "p", text = dec$text)),
       lapply(tables, function(t) list(type = "table", table = t)))),
     list(heading = "6. Result visualisations", items = lapply(rfigs, function(f) list(type = "figure", fig = f))),
     list(heading = "7. What this means (plain language)", items = list(list(type = "p", text = explanation))),
@@ -73,6 +79,7 @@ qc_run_hypothesis <- function(h, ctx) {
       list(type = "code", lines = out$script))))
   files <- qc_write_report(paste0(h$id, ": ", sub("\\.$", "", h$text)), sections, file.path(hdir, paste0(h$id, "_report")))
   list(id = h$id, sentence = h$sentence, blocked = FALSE, test = qc_test_labels[[id]], family = screen$decision$family,
+       h1 = pair$h1, h0 = pair$h0, lab1 = pair$lab1, lab0 = pair$lab0, decision = dec, user_text = h$text,
        reason = screen$decision$reason, paragraph = paragraph, explanation = explanation, tables = tables,
        figures = c(afigs, rfigs), result_figures = rfigs, checks = screen$checks, files = c(files, script = script_file),
        references = screen$decision$references, warnings = warnings)
@@ -141,13 +148,18 @@ qc_summary_report <- function(results, ctx, descriptives = NULL) {
     length(results), basename(ctx$path))))))
   if (!is.null(descriptives)) secs[[length(secs) + 1]] <- list(heading = "Descriptive statistics", items = c(list(list(type = "paste", text = descriptives$paragraph)),
     lapply(descriptives$tables[1], function(t) list(type = "table", table = t))))
+  ok <- Filter(function(x) !isTRUE(x$blocked), results)
+  if (length(ok)) secs[[length(secs) + 1]] <- list(heading = "Overview of decisions", items = list(list(type = "table", table = qc_tab("Hypothesis decisions (alpha = .05)",
+    data.frame(ID = sapply(ok, `[[`, "id"), `Research hypothesis` = sapply(ok, `[[`, "h1"), Test = sapply(ok, `[[`, "test"),
+      Decision = sapply(ok, function(x) x$decision$short), check.names = FALSE)))))
   refs <- character()
   for (res in results) {
     if (isTRUE(res$blocked)) { secs[[length(secs) + 1]] <- list(heading = res$id, items = list(list(type = "p", text = res$sentence),
       list(type = "p", text = paste("Not possible with this data:", res$message)))); next }
     refs <- c(refs, res$references)
     secs[[length(secs) + 1]] <- list(heading = paste0(res$id, ": ", res$test), items = c(
-      list(list(type = "p", text = res$sentence), list(type = "paste", text = res$paragraph)),
+      list(list(type = "list", items = c(paste0("Research hypothesis (", res$lab1, "): ", res$h1), paste0("Null hypothesis (", res$lab0, "): ", res$h0))), list(type = "paste", text = res$paragraph),
+           list(type = "p", text = res$decision$text)),
       lapply(res$tables[length(res$tables)], function(t) list(type = "table", table = t)),
       lapply(res$result_figures, function(f) list(type = "figure", fig = f)),
       list(list(type = "p", text = res$explanation))))
