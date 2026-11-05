@@ -118,8 +118,10 @@ server <- function(input, output, session) {
 
   # ---- Describe dataset ----
   output$by_ui <- renderUI({ req(rv$path); d <- dat()
-    cand <- names(d)[sapply(d, function(x) { u <- length(unique(stats::na.omit(x))); u >= 2 && u <= 8 })]
-    selectInput("by", "Also split numeric variables by group (optional)", c("No split" = "", stats::setNames(cand, sapply(cand, function(v) qc_lab_ui(v, rv$labels))))) })
+    cand <- names(d)[sapply(d, function(x) { u <- length(unique(stats::na.omit(x))); u >= 2 && u <= 12 })]
+    tagList(selectInput("by", "Also split numeric variables by group (optional)", c("No split" = "", stats::setNames(cand, sapply(cand, function(v) qc_lab_ui(v, rv$labels))))),
+      p(class = "text-muted small", sprintf("Only columns with 2 to 12 different values can split the data into groups (here: %s). Columns with many different values, such as prices or ages, would create hundreds of tiny groups.",
+        if (length(cand)) paste(cand, collapse = ", ") else "none"))) })
   observeEvent(input$describe, { req(rv$path)
     withProgress(message = "Describing your dataset...", {
       rv$desc <- tryCatch(qc_describe_dataset(ctx(), if (nzchar(input$by)) input$by else NULL), error = function(e) list(error = conditionMessage(e))) }) })
@@ -139,7 +141,8 @@ server <- function(input, output, session) {
     grp <- all[nl >= 2 & nl <= 12]; cats <- all[nl >= 2 & nl <= 20]
     nm <- function(v) stats::setNames(v, sapply(v, function(x) qc_lab_ui(x, rv$labels)))
     switch(input$qtype,
-      difference = tagList(selectInput("v_out", "What is measured? (outcome)", nm(num)), selectInput("v_grp", "Which groups? (grouping column)", nm(grp))),
+      difference = tagList(selectInput("v_out", "What is measured? (outcome)", nm(num)), selectInput("v_grp", "Which groups? (grouping column)", nm(grp)),
+        p(class = "text-muted small", "Only columns with 2 to 12 different values are listed as groups (e.g. yes/no, gender, department). To study a numeric column such as crime rate or age, choose 'Relationship between two variables' or 'Predict an outcome' instead - splitting numbers into groups throws information away.")),
       paired_difference = tagList(selectInput("v_1", "First measurement (e.g. before)", nm(num)), selectInput("v_2", "Second measurement (e.g. after)", nm(num), selected = num[min(2, length(num))])),
       relationship = tagList(selectInput("v_1", "First variable", nm(all)), selectInput("v_2", "Second variable", nm(all), selected = all[min(2, length(all))])),
       association = tagList(selectInput("v_1", "First category variable", nm(cats)), selectInput("v_2", "Second category variable", nm(cats), selected = cats[min(2, length(cats))])),
