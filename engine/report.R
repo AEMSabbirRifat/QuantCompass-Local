@@ -181,41 +181,75 @@ h1{font-size:1.5rem}h2{font-size:1.15rem;border-bottom:1px solid #e5e7eb;padding
 table{border-collapse:collapse;margin:.4rem 0 .6rem;font-size:.92rem}th{border-top:1.5px solid #1f2933;border-bottom:1px solid #1f2933;padding:.3rem .6rem;text-align:left}
 td{padding:.25rem .6rem}tr:last-child td{border-bottom:1.5px solid #1f2933}.tabno,.tabtitle{margin:.8rem 0 0}.note{font-size:.88rem;color:#4b5563}
 .paste{background:#f4f8fd;border-left:4px solid #2a78d6;padding:.8rem 1rem}.met{color:#047857}.notmet{color:#b91c1c}
-img{max-width:100%}.fig{margin:1rem 0}.cap{font-size:.9rem}pre{background:#f7f7f5;padding:.8rem;font-size:.78rem;overflow-x:auto;white-space:pre-wrap}"
+img{max-width:100%}.fig{margin:1rem 0}.cap{font-size:.9rem}pre{background:#f7f7f5;padding:.8rem;font-size:.78rem;overflow-x:auto;white-space:pre-wrap}
+.term{border-bottom:1px dotted #2a78d6;cursor:help}#qc-tip{position:fixed;z-index:10;max-width:340px;background:#1f2933;color:#fff;font:13px/1.45 system-ui,sans-serif;padding:.6rem .7rem;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.2);display:none}
+.gl{margin:.35rem 0}"
+
+# Glossary helpers: HTML hover notes and Word comments on the first occurrence of each term
+qc_html_terms <- function(text, used) {
+  r <- qc_term_segments(text, used)
+  html <- paste0(vapply(r$segs, function(sg) if (is.na(sg$key)) htmltools::htmlEscape(sg$text) else
+    paste0("<span class='term' tabindex='0' data-def='", htmltools::htmlEscape(paste0(sg$key, ": ", qc_glossary[[sg$key]]$def), TRUE), "'>",
+           htmltools::htmlEscape(sg$text), "</span>"), character(1)), collapse = "")
+  list(html = html, used = r$used)
+}
+qc_word_terms <- function(text, used, prefix = "") {
+  r <- qc_term_segments(text, used)
+  runs <- lapply(r$segs, function(sg) if (is.na(sg$key)) officer::ftext(sg$text) else
+    officer::run_comment(cmt = officer::block_list(officer::fpar(officer::ftext(paste0(sg$key, ": ", qc_glossary[[sg$key]]$def)))),
+                         run = officer::ftext(sg$text), author = "QuantCompass", initials = "QC"))
+  list(par = do.call(officer::fpar, c(if (nzchar(prefix)) list(officer::ftext(prefix)), runs)), used = r$used)
+}
+qc_report_text <- function(sections) paste(unlist(lapply(sections, function(s) lapply(s$items, function(it) switch(it$type,
+  p = it$text, paste = it$text, list = it$items, table = c(it$table$title, it$table$note, names(it$table$df), unlist(it$table$df)),
+  checks = c(it$checks$check, it$checks$method, it$checks$meaning), figure = it$fig$caption, NULL)))), collapse = " ")
 
 # sections: list of list(heading, items) where items are list(type = "p"|"paste"|"table"|"figure"|"code"|"list", ...)
 qc_write_report <- function(title, sections, out_base) {
   dir.create(dirname(out_base), recursive = TRUE, showWarnings = FALSE)
+  terms <- qc_terms_in(qc_report_text(sections))
+  if (length(terms)) sections[[length(sections) + 1]] <- list(heading = "Key terms in this report", glossary = TRUE, items = c(
+    list(list(type = "p", text = "Short, plain-language definitions of the statistical terms used above. In the Word file, the first mention of each term also carries a comment with its definition.", plain = TRUE)),
+    lapply(sort(terms), function(k) list(type = "term", key = k))))
   # HTML
-  tn <- 0; fn <- 0; html <- c("<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'><title>", htmltools::htmlEscape(title), "</title><style>", qc_css, "</style></head><body>",
-                              "<h1>", htmltools::htmlEscape(title), "</h1>")
+  used <- character(); tn <- 0; fn <- 0
+  html <- c("<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'><title>", htmltools::htmlEscape(title), "</title><style>", qc_css, "</style></head><body>",
+            "<h1>", htmltools::htmlEscape(title), "</h1>")
   for (s in sections) {
     html <- c(html, "<h2>", htmltools::htmlEscape(s$heading), "</h2>")
-    for (it in s$items) html <- c(html, switch(it$type,
-      p = paste0("<p>", htmltools::htmlEscape(it$text), "</p>"),
-      paste = paste0("<div class='paste'>", htmltools::htmlEscape(it$text), "</div>"),
-      list = paste0("<ul>", paste0("<li>", htmltools::htmlEscape(it$items), "</li>", collapse = ""), "</ul>"),
-      table = { tn <- tn + 1; qc_html_table(it$table, tn) },
-      figure = { fn <- fn + 1; paste0("<div class='fig'><p><b>Figure ", fn, "</b></p><img src='data:image/png;base64,",
-        jsonlite::base64_enc(readBin(it$fig$file, "raw", file.info(it$fig$file)$size)), "' alt='", htmltools::htmlEscape(it$fig$caption),
-        "'><p class='cap'><i>", htmltools::htmlEscape(it$fig$caption), "</i></p></div>") },
-      checks = paste0("<table><tr><th>Check</th><th>Method</th><th>Result</th><th>Met?</th><th>What it means</th></tr>",
-        paste0(apply(it$checks, 1, function(r) paste0("<tr><td>", htmltools::htmlEscape(r[["check"]]), "</td><td>", htmltools::htmlEscape(r[["method"]]),
-          "</td><td>", htmltools::htmlEscape(r[["value"]]), "</td><td class='", if (is.na(as.logical(r[["met"]]))) "" else if (as.logical(r[["met"]])) "met" else "notmet", "'>",
-          if (is.na(as.logical(r[["met"]]))) "n/a" else if (as.logical(r[["met"]])) "Yes" else "No", "</td><td>", htmltools::htmlEscape(r[["meaning"]]), "</td></tr>")), collapse = ""), "</table>"),
-      code = paste0("<pre>", htmltools::htmlEscape(paste(it$lines, collapse = "\n")), "</pre>")))
+    for (it in s$items) {
+      if (it$type %in% c("p", "paste") && !isTRUE(it$plain)) { r <- qc_html_terms(it$text, used); used <- r$used
+        html <- c(html, if (it$type == "p") paste0("<p>", r$html, "</p>") else paste0("<div class='paste'>", r$html, "</div>")); next }
+      if (it$type == "list") { li <- character(); for (x in it$items) { r <- qc_html_terms(x, used); used <- r$used; li <- c(li, paste0("<li>", r$html, "</li>")) }
+        html <- c(html, "<ul>", li, "</ul>"); next }
+      html <- c(html, switch(it$type,
+        p = paste0("<p>", htmltools::htmlEscape(it$text), "</p>"),
+        term = paste0("<p class='gl'><b>", htmltools::htmlEscape(it$key), "</b> - ", htmltools::htmlEscape(qc_glossary[[it$key]]$def), "</p>"),
+        table = { tn <- tn + 1; qc_html_table(it$table, tn) },
+        figure = { fn <- fn + 1; paste0("<div class='fig'><p><b>Figure ", fn, "</b></p><img src='data:image/png;base64,",
+          jsonlite::base64_enc(readBin(it$fig$file, "raw", file.info(it$fig$file)$size)), "' alt='", htmltools::htmlEscape(it$fig$caption),
+          "'><p class='cap'><i>", htmltools::htmlEscape(it$fig$caption), "</i></p></div>") },
+        checks = paste0("<table><tr><th>Check</th><th>Method</th><th>Result</th><th>Met?</th><th>What it means</th></tr>",
+          paste0(apply(it$checks, 1, function(r) paste0("<tr><td>", htmltools::htmlEscape(r[["check"]]), "</td><td>", htmltools::htmlEscape(r[["method"]]),
+            "</td><td>", htmltools::htmlEscape(r[["value"]]), "</td><td class='", if (is.na(as.logical(r[["met"]]))) "" else if (as.logical(r[["met"]])) "met" else "notmet", "'>",
+            if (is.na(as.logical(r[["met"]]))) "n/a" else if (as.logical(r[["met"]])) "Yes" else "No", "</td><td>", htmltools::htmlEscape(r[["meaning"]]), "</td></tr>")), collapse = ""), "</table>"),
+        code = paste0("<pre>", htmltools::htmlEscape(paste(it$lines, collapse = "\n")), "</pre>")))
+    }
   }
-  html <- c(html, "<p class='note'>Generated by QuantCompass (open source, GPL-3.0). Results are computed in R; check your design with your supervisor.</p></body></html>")
+  html <- c(html, "<p class='note'>Generated by QuantCompass (open source, GPL-3.0). Results are computed in R; check your design with your supervisor. Hover over or tap underlined terms for a short definition.</p><div id='qc-tip'></div><script>(function(){var t=document.getElementById('qc-tip');function show(e){var el=e.target.closest('.term');if(!el)return;t.textContent=el.getAttribute('data-def');t.style.display='block';var r=el.getBoundingClientRect(),w=t.offsetWidth,h=t.offsetHeight;var x=Math.min(Math.max(8,r.left),window.innerWidth-w-8);var y=r.bottom+6;if(y+h>window.innerHeight-8)y=r.top-h-6;t.style.left=x+'px';t.style.top=y+'px';}function hide(e){if(e.target.closest('.term'))t.style.display='none';}document.addEventListener('mouseover',show);document.addEventListener('focusin',show);document.addEventListener('mouseout',hide);document.addEventListener('focusout',hide);window.addEventListener('scroll',function(){t.style.display='none';});})();</script></body></html>")
   writeLines(paste(html, collapse = ""), paste0(out_base, ".html"), useBytes = TRUE)
-  # Word
+  # Word (comments are not placed inside the ready-to-paste paragraph, so it can be copied cleanly)
   doc <- officer::read_docx()
   doc <- officer::body_add_par(doc, title, style = "heading 1")
-  tn <- 0; fn <- 0
+  used <- character(); tn <- 0; fn <- 0
   for (s in sections) {
     doc <- officer::body_add_par(doc, s$heading, style = "heading 2")
     for (it in s$items) {
-      if (it$type %in% c("p", "paste")) doc <- officer::body_add_par(doc, it$text, style = "Normal")
-      else if (it$type == "list") for (x in it$items) doc <- officer::body_add_par(doc, paste("•", x), style = "Normal")
+      if (it$type == "paste" || isTRUE(it$plain)) doc <- officer::body_add_par(doc, it$text, style = "Normal")
+      else if (it$type == "p") { r <- qc_word_terms(it$text, used); used <- r$used; doc <- officer::body_add_fpar(doc, r$par) }
+      else if (it$type == "list") for (x in it$items) { r <- qc_word_terms(x, used, "• "); used <- r$used; doc <- officer::body_add_fpar(doc, r$par) }
+      else if (it$type == "term") doc <- officer::body_add_fpar(doc, officer::fpar(officer::ftext(it$key, officer::fp_text(bold = TRUE)),
+        officer::ftext(paste0(" - ", qc_glossary[[it$key]]$def))))
       else if (it$type == "table") { tn <- tn + 1
         doc <- officer::body_add_fpar(doc, officer::fpar(officer::ftext(paste("Table", tn), officer::fp_text(bold = TRUE))))
         doc <- officer::body_add_fpar(doc, officer::fpar(officer::ftext(it$table$title, officer::fp_text(italic = TRUE))))

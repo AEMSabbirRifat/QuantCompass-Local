@@ -3,6 +3,6 @@
 local({
   root <- getOption("qc.root", ".")
   for (f in c("helpers.R", "io.R", "profile.R", "rules.R", "render.R", "assumptions.R",
-             "plots.R", "report.R", "pipeline.R"))
+             "plots.R", "glossary.R", "report.R", "pipeline.R"))
     sys.source(file.path(root, "engine", f), envir = globalenv())
 })
