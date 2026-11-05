@@ -16,16 +16,17 @@ type_help <- c(difference = "Example: Does house value differ between homes near
   prediction = "Example: Do rooms, crime rate and pupil-teacher ratio predict house value?",
   reliability = "Example: Do the four job-satisfaction items form a reliable scale?")
 
-card <- function(...) div(class = "card shadow-sm mb-3", div(class = "card-body", ...))
+card <- function(...) div(class = "card mb-3", div(class = "card-body", ...))
 step_note <- function(txt) p(class = "text-muted", txt)
 
+brand <- tags$span(HTML(paste(readLines(file.path(root, "app", "www", "logo_inline.svg"), warn = FALSE), collapse = "")),
+  tags$span(tags$span(class = "qc-word", HTML("Quant<b>Compass</b>")), tags$span(class = "qc-tag", "From hypothesis to thesis-ready statistics")))
+
 ui <- navbarPage(
-  title = "QuantCompass", id = "nav",
-  theme = bslib::bs_theme(version = 5, primary = "#2a78d6", base_font = bslib::font_collection("system-ui", "Segoe UI", "sans-serif")),
-  header = tags$head(tags$style(HTML("
-    .paste{background:#f4f8fd;border-left:4px solid #2a78d6;padding:.8rem 1rem;border-radius:4px}
-    .verdict-ready{color:#047857;font-weight:600}.verdict-fix{color:#b45309;font-weight:600}.verdict-blocked{color:#b91c1c;font-weight:600}
-    iframe{width:100%;height:900px;border:1px solid #e5e7eb;border-radius:6px} .hyp{border-left:3px solid #2a78d6;padding-left:.7rem;margin:.4rem 0}"))),
+  title = brand, id = "nav", windowTitle = "QuantCompass",
+  theme = bslib::bs_theme(version = 5, primary = "#2a78d6"),
+  header = tags$head(tags$link(rel = "icon", type = "image/svg+xml", href = "logo.svg"),
+    tags$link(rel = "stylesheet", href = "quantcompass.css"), tags$script(src = "quantcompass.js")),
   tabPanel("1. Your data",
     fluidRow(column(5,
       card(h5("Choose your data file"), step_note("CSV or Excel. The file stays on your computer."),
@@ -43,28 +44,29 @@ ui <- navbarPage(
     uiOutput("desc_out")),
   tabPanel("3. Hypotheses",
     fluidRow(column(6,
-      card(h5("Option A: add a hypothesis by clicking"),
+      card(h5("Option A: build a hypothesis by clicking"),
+        uiOutput("ideas_ui"),
         radioButtons("qtype", "What do you want to find out?", choices = types_plain),
         uiOutput("qtype_help"), uiOutput("vars_ui"),
         textInput("htext", "Your hypothesis in your own words (optional)", placeholder = "e.g. House value differs by river location"),
         selectInput("choice", "Test choice", c("Automatic - based on assumption checks (recommended)" = "auto",
           "Always parametric" = "parametric", "Always non-parametric" = "non-parametric")),
-        actionButton("preview", "Preview hypothesis", class = "btn-outline-primary"), br(), br(), uiOutput("preview_out")),
+        uiOutput("preview_out")),
       card(h5("Option B: many hypotheses from an Excel sheet"),
         step_note("Download the template, fill one row per hypothesis (column names must match your data), then upload it. A sheet called 'Hypotheses' inside your data workbook is also detected."),
-        downloadButton("tpl", "Download hypothesis template"), br(), br(),
+        downloadButton("tpl", "Download hypothesis template", class = "btn-outline-primary"), br(), br(),
         fileInput("hfile", NULL, accept = c(".xlsx", ".csv"), buttonLabel = "Upload filled sheet..."),
         uiOutput("sheet_hyp_ui"), uiOutput("hfile_out"))),
     column(6, card(h5("Your hypotheses"), uiOutput("hyp_list"),
       uiOutput("remove_ui"), hr(),
-      actionButton("run", "Run all hypotheses", class = "btn-primary btn-lg"),
+      actionButton("run", "Run all hypotheses", class = "btn-run"),
       step_note("Each hypothesis: assumptions are screened, the test is chosen, the analysis runs, and a report with charts and the exact R script is created."))))),
   tabPanel("4. Results", uiOutput("results_out"))
 )
 
 server <- function(input, output, session) {
   rv <- reactiveValues(path = NULL, sheet = NULL, fixes = character(), labels = list(), level_labels = list(),
-                       hyps = list(), pending = NULL, results = NULL, desc = NULL, out_dir = NULL, run_name = NULL)
+                       hyps = list(), prefill = NULL, results = NULL, desc = NULL, out_dir = NULL, run_name = NULL)
 
   # ---- Data ----
   observeEvent(input$file, {
@@ -139,17 +141,50 @@ server <- function(input, output, session) {
     all <- setdiff(names(d), pc$column[pc$type %in% c("id", "empty", "constant")]); d <- d[all]
     num <- all[sapply(d, is.numeric)]; nl <- sapply(d, function(x) length(unique(stats::na.omit(x))))
     grp <- all[nl >= 2 & nl <= 12]; cats <- all[nl >= 2 & nl <= 20]
-    nm <- function(v) stats::setNames(v, sapply(v, function(x) qc_lab_ui(x, rv$labels)))
+    kind <- function(v) { u <- nl[[v]]; if (u <= 12 && !(is.numeric(d[[v]]) && u > 7)) sprintf("%d groups", u)
+      else if (is.numeric(d[[v]])) sprintf("numbers, %d values", u) else sprintf("text, %d values", u) }
+    nm <- function(v) stats::setNames(v, sapply(v, function(x) paste0(qc_lab_ui(x, rv$labels), "  (", kind(x), ")")))
+    pf <- rv$prefill; sel <- function(key, fallback) if (!is.null(pf) && identical(pf$qtype, input$qtype) && !is.null(pf[[key]])) pf[[key]] else fallback
+    ph <- function(txt) list(placeholder = txt, plugins = list("remove_button"))
     switch(input$qtype,
-      difference = tagList(selectInput("v_out", "What is measured? (outcome)", nm(num)), selectInput("v_grp", "Which groups? (grouping column)", nm(grp)),
+      difference = tagList(selectInput("v_out", "What is measured? (outcome - numbers)", nm(num), selected = sel("v_out", num[1])),
+        selectInput("v_grp", "Which groups? (grouping column)", nm(grp), selected = sel("v_grp", grp[1])),
         p(class = "text-muted small", "Only columns with 2 to 12 different values are listed as groups (e.g. yes/no, gender, department). To study a numeric column such as crime rate or age, choose 'Relationship between two variables' or 'Predict an outcome' instead - splitting numbers into groups throws information away.")),
-      paired_difference = tagList(selectInput("v_1", "First measurement (e.g. before)", nm(num)), selectInput("v_2", "Second measurement (e.g. after)", nm(num), selected = num[min(2, length(num))])),
-      relationship = tagList(selectInput("v_1", "First variable", nm(all)), selectInput("v_2", "Second variable", nm(all), selected = all[min(2, length(all))])),
-      association = tagList(selectInput("v_1", "First category variable", nm(cats)), selectInput("v_2", "Second category variable", nm(cats), selected = cats[min(2, length(cats))])),
-      prediction = tagList(selectInput("v_out", "What do you want to predict? (outcome)", nm(all[sapply(d, is.numeric) | nl == 2])),
-        selectizeInput("v_preds", "Predictors (choose one or more)", nm(all), multiple = TRUE)),
-      reliability = tagList(selectizeInput("v_items", "Items of the scale", nm(num), multiple = TRUE),
-        selectizeInput("v_rev", "Negatively worded items to reverse-code (optional)", nm(num), multiple = TRUE))) })
+      paired_difference = tagList(selectInput("v_1", "First measurement (e.g. before)", nm(num), selected = sel("v_1", num[1])),
+        selectInput("v_2", "Second measurement (e.g. after)", nm(num), selected = sel("v_2", num[min(2, length(num))]))),
+      relationship = tagList(selectInput("v_1", "First variable", nm(all), selected = sel("v_1", all[1])),
+        selectInput("v_2", "Second variable", nm(all), selected = sel("v_2", all[min(2, length(all))]))),
+      association = tagList(selectInput("v_1", "First category variable", nm(cats), selected = sel("v_1", cats[1])),
+        selectInput("v_2", "Second category variable", nm(cats), selected = sel("v_2", cats[min(2, length(cats))]))),
+      prediction = tagList(selectInput("v_out", "What do you want to predict? (outcome)", nm(all[sapply(d, is.numeric) | nl == 2]), selected = sel("v_out", NULL)),
+        selectizeInput("v_preds", "Predictors (choose one or more)", nm(all), multiple = TRUE, selected = sel("v_preds", NULL), options = ph("Start typing a column name..."))),
+      reliability = tagList(selectizeInput("v_items", "Items of the scale", nm(num), multiple = TRUE, selected = sel("v_items", NULL), options = ph("Choose two or more items, e.g. q1, q2, q3")),
+        selectizeInput("v_rev", "Negatively worded items to reverse-code (optional)", nm(num), multiple = TRUE, selected = sel("v_rev", NULL), options = ph("Optional")))) })
+
+  # Ideas based on column types only (never on results, to avoid choosing hypotheses after seeing the data)
+  ideas <- reactive({ req(rv$path); d <- dat(); pc <- prof()$columns
+    all <- setdiff(names(d), pc$column[pc$type %in% c("id", "empty", "constant", "text")])
+    nl <- sapply(d[all], function(x) length(unique(stats::na.omit(x))))
+    num <- all[sapply(d[all], is.numeric) & nl > 7]; grp <- all[nl >= 2 & nl <= 12]; L <- function(v) qc_lab(v)
+    out <- list()
+    if (length(num) && length(grp)) out[[length(out) + 1]] <- list(label = sprintf("Compare %s between %s groups", L(utils::tail(num, 1)), L(grp[1])),
+      qtype = "difference", v_out = utils::tail(num, 1), v_grp = grp[1])
+    if (length(num) >= 2) out[[length(out) + 1]] <- list(label = sprintf("Is %s related to %s?", L(num[1]), L(utils::tail(num, 1))),
+      qtype = "relationship", v_1 = num[1], v_2 = utils::tail(num, 1))
+    if (length(grp) >= 2) out[[length(out) + 1]] <- list(label = sprintf("Are %s and %s associated?", L(grp[1]), L(grp[2])),
+      qtype = "association", v_1 = grp[1], v_2 = grp[2])
+    if (length(num) >= 3) out[[length(out) + 1]] <- list(label = sprintf("Predict %s from %s", L(utils::tail(num, 1)), qc_and(sapply(utils::head(num, 2), L))),
+      qtype = "prediction", v_out = utils::tail(num, 1), v_preds = utils::head(num, 2))
+    for (b in names(prof()$batteries)) out[[length(out) + 1]] <- list(label = sprintf("Reliability of the %s items", b),
+      qtype = "reliability", v_items = prof()$batteries[[b]])
+    out })
+  output$ideas_ui <- renderUI({ req(rv$path); qc_set_labels(ctx()); id <- ideas(); if (!length(id)) return(NULL)
+    tagList(p(class = "small text-muted mb-1", "Ideas from your column types - click one to fill in the choices below. Choose hypotheses from your research question, not from what looks significant."),
+      div(class = "ideas", lapply(seq_along(id), function(k) tags$button(type = "button", class = "idea", id[[k]]$label,
+        onclick = sprintf("Shiny.setInputValue('idea', %d, {priority: 'event'})", k))))) })
+  observeEvent(input$idea, { id <- ideas()[[input$idea]]; rv$prefill <- id
+    updateRadioButtons(session, "qtype", selected = id$qtype) })
+
   spec_from_inputs <- function() switch(input$qtype,
     difference = list(goal = "difference", outcome = input$v_out, group = input$v_grp),
     paired_difference = list(goal = "paired_difference", var1 = input$v_1, var2 = input$v_2),
@@ -157,20 +192,29 @@ server <- function(input, output, session) {
     association = list(goal = "association", var1 = input$v_1, var2 = input$v_2),
     prediction = list(goal = "prediction", outcome = input$v_out, predictors = setdiff(input$v_preds, input$v_out)),
     reliability = list(goal = "reliability", items = input$v_items, reverse = input$v_rev))
-  observeEvent(input$preview, { req(rv$path); qc_set_labels(ctx()); spec <- spec_from_inputs()
-    problem <- if (spec$goal %in% c("paired_difference", "relationship", "association") && identical(spec$var1, spec$var2)) "Please choose two different variables."
-      else if (spec$goal == "prediction" && !length(spec$predictors)) "Please choose at least one predictor."
-      else if (spec$goal == "reliability" && length(spec$items) < 2) "Please choose at least two items." else NULL
-    if (!is.null(problem)) { rv$pending <- list(problem = problem); return() }
-    sentence <- qc_sentence(spec, dat())
-    rv$pending <- list(spec = spec, sentence = sentence, text = if (nzchar(input$htext)) input$htext else sub("^We will test whether |^We will check whether ", "", sub("\\.$", "", sentence)), choice = input$choice) })
-  output$preview_out <- renderUI({ pd <- rv$pending; req(pd)
-    if (!is.null(pd$problem)) return(p(class = "text-danger", pd$problem))
-    tagList(div(class = "paste", tags$b(paste0("H", length(rv$hyps) + 1, ": ")), pd$sentence), p(class = "mt-2", "Is this what you want to test?"),
-      actionButton("confirm", "Yes, add it", class = "btn-success"), span(class = "text-muted ms-2", "Not right? Change the choices above and preview again.")) })
-  observeEvent(input$confirm, { pd <- rv$pending; req(pd$spec)
+  live <- reactive({ req(rv$path); qc_set_labels(ctx()); spec <- spec_from_inputs(); req(spec)
+    need <- unlist(spec[setdiff(names(spec), c("goal", "reverse"))])
+    if (!length(need) || any(!nzchar(need))) return(list(problem = "Choose the columns above."))
+    if (spec$goal %in% c("paired_difference", "relationship", "association") && identical(spec$var1, spec$var2)) return(list(problem = "Please choose two different variables."))
+    if (spec$goal == "prediction" && !length(spec$predictors)) return(list(problem = "Choose at least one predictor."))
+    if (spec$goal == "reliability" && length(spec$items) < 2) return(list(problem = "Choose at least two items."))
+    pair <- tryCatch(qc_hypothesis_pair(spec, dat(), paste0("H", length(rv$hyps) + 1)), error = function(e) NULL)
+    sentence <- tryCatch(qc_sentence(spec, dat()), error = function(e) NULL)
+    if (is.null(pair) || is.null(sentence)) return(list(problem = "These columns cannot be combined this way."))
+    list(spec = spec, sentence = sentence, pair = pair, choice = input$choice,
+         text = if (nzchar(input$htext)) input$htext else sub("^We will test whether |^We will check whether ", "", sub("\\.$", "", sentence))) })
+  output$preview_out <- renderUI({ pd <- live()
+    if (!is.null(pd$problem)) return(p(class = "text-muted", pd$problem))
+    tagList(div(class = "paste", tags$b(paste0("H", length(rv$hyps) + 1, ": ")), pd$sentence),
+      div(class = "hpair", div(span(class = "lab lab-h1", pd$pair$lab1), "Research hypothesis: ", pd$pair$h1),
+        div(span(class = "lab lab-h0", pd$pair$lab0), "Null hypothesis: ", pd$pair$h0),
+        div(class = "small text-muted", pd$pair$note)),
+      p(class = "mt-2 mb-2", "Is this what you want to test?"),
+      actionButton("confirm", "Yes, add this hypothesis", class = "btn-success")) })
+  observeEvent(input$confirm, { pd <- live(); req(pd$spec)
     rv$hyps[[length(rv$hyps) + 1]] <- list(id = paste0("H", length(rv$hyps) + 1), text = pd$text, sentence = pd$sentence, spec = pd$spec, choice = pd$choice)
-    rv$pending <- NULL; updateTextInput(session, "htext", value = "") })
+    rv$prefill <- NULL; updateTextInput(session, "htext", value = "")
+    showNotification(paste0("Added H", length(rv$hyps), "."), type = "message") })
 
   # ---- Hypotheses: option B ----
   output$tpl <- downloadHandler(filename = "QuantCompass_Hypotheses_Template.xlsx",
@@ -191,8 +235,10 @@ server <- function(input, output, session) {
     parsed_b(NULL); showNotification("Hypotheses added.", type = "message") })
 
   output$hyp_list <- renderUI({ if (!length(rv$hyps)) return(p(class = "text-muted", "No hypotheses yet. Add them with Option A or B."))
-    lapply(rv$hyps, function(h) div(class = "hyp", tags$b(h$id, ": "), h$sentence,
-      if (!identical(h$choice, "auto")) span(class = "badge bg-secondary ms-1", h$choice))) })
+    qc_set_labels(ctx())
+    lapply(rv$hyps, function(h) { pr <- tryCatch(qc_hypothesis_pair(h$spec, dat(), h$id), error = function(e) NULL)
+      div(class = "hyp", tags$b(h$id, ": "), h$sentence, if (!identical(h$choice, "auto")) span(class = "badge bg-secondary ms-1", h$choice),
+        if (!is.null(pr)) div(class = "small text-muted", paste0(pr$lab0, " (null): "), pr$h0)) }) })
   output$remove_ui <- renderUI({ if (length(rv$hyps)) tagList(br(), selectInput("rm_h", NULL, sapply(rv$hyps, `[[`, "id"), width = "120px"),
     actionButton("rm", "Remove", class = "btn-outline-danger btn-sm")) })
   observeEvent(input$rm, { rv$hyps <- Filter(function(h) h$id != input$rm_h, rv$hyps)
@@ -219,7 +265,10 @@ server <- function(input, output, session) {
       lapply(seq_along(r$items), function(i) { x <- r$items[[i]]
         if (isTRUE(x$blocked)) return(card(h5(x$id), p(x$sentence), p(class = "text-danger", x$message)))
         rel <- sub(paste0("^", results_root, "/"), "", x$files[["html"]])
-        card(h5(paste0(x$id, ": ", x$test)), p(x$sentence), p(tags$b("Why this test: "), x$reason),
+        card(h5(paste0(x$id, ": ", x$test)),
+          div(class = "hpair", div(span(class = "lab lab-h1", x$lab1), "Research hypothesis: ", x$h1), div(span(class = "lab lab-h0", x$lab0), "Null hypothesis: ", x$h0)),
+          span(class = paste("decision", if (isTRUE(x$decision$rejected)) "rej" else "keep"), x$decision$short),
+          p(tags$b("Why this test: "), x$reason),
           div(class = "paste", x$paragraph), br(),
           downloadButton(paste0("dl_docx_", i), "Word report"), downloadButton(paste0("dl_r_", i), "R script"),
           tags$details(class = "mt-3", tags$summary("Show full report with charts"), tags$iframe(src = paste0("qcresults/", rel)))) })) })
