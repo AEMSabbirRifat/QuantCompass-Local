@@ -41,6 +41,7 @@ That's all. Everything else is clicking.
 6. **Result charts**: means with 95% CI, boxplots, scatterplots, coefficient and odds-ratio plots
 7. **Plain-language explanation** of the process and the result
 8. **Appendix**: the exact R script that produced every number (rerun it to reproduce them)
+9. **Key terms**: plain-language definitions with examples of every statistical term used. In Word, the first mention of each term carries a comment with its definition; in the HTML report, hover over underlined terms.
 
 A **summary report** combines all hypotheses and includes a software/AI disclosure paragraph you can adapt for your thesis declaration.
 
