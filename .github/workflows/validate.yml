@@ -9,7 +9,7 @@ jobs:
         with:
           use-public-rspm: true   # pre-built binary packages: fast, no compiling
       - name: Install packages
-        run: Rscript -e 'install.packages(c("readxl", "testthat"))'
+        run: Rscript -e 'install.packages(c("readxl", "testthat", "ggplot2", "officer", "htmltools", "jsonlite"))'
       - name: Run validation suite
         run: Rscript validation/run_validation.R
       - name: Run end-to-end example
