@@ -1,7 +1,8 @@
 # =====================================================================
 #  QuantCompass - START HERE
 #  1. Open this file in RStudio.
-#  2. Click the "Source" button (top right of this window).
+#  2. Press Ctrl + Shift + S (Mac: Cmd + Shift + S), or click "Source"
+#     (top right of this window). Do not use "Run App".
 #  The app opens in your browser. No code needed after that.
 # =====================================================================
 
@@ -25,4 +26,5 @@ if (length(qc_missing)) {
 }
 
 message("Starting QuantCompass... it opens in your browser. To stop it, press the red Stop button in RStudio's Console.")
-shiny::runApp(file.path(qc_here, "app"), launch.browser = TRUE)
+qc_start <- get("runApp", envir = asNamespace("shiny"))   # written this way so RStudio shows "Source"
+qc_start(file.path(qc_here, "app"), launch.browser = TRUE)

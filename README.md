@@ -18,7 +18,7 @@ For each hypothesis QuantCompass **screens the assumptions first**, **chooses th
 2. **Install RStudio Desktop** (free): [posit.co/download/rstudio-desktop](https://posit.co/download/rstudio-desktop/).
 3. **Download QuantCompass**: green **Code** button above - **Download ZIP** - right-click the ZIP - **Extract All**.
 4. **Open `START-QuantCompass.R`** in RStudio (inside the extracted folder; if there is a folder inside a folder, open the inner one).
-5. Click **Source** (top right of the script window). The first start installs what it needs (a few minutes, once). The app then opens in your browser.
+5. Press **Ctrl + Shift + S** (Mac: Cmd + Shift + S) or click **Source** (top right of the script window). Do not use "Run App". The first start installs what it needs (a few minutes, once). The app then opens in your browser.
 
 That's all. Everything else is clicking.
 
