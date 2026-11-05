@@ -111,3 +111,15 @@ test_that("Hypothesis sheet is parsed and column typos are caught with suggestio
   expect_equal(length(out$hypotheses), 1)
   expect_match(out$problems, "did you mean 'rm'")
 })
+
+test_that("Every report states the research and null hypotheses and the decision", {
+  df <- data.frame(y = c(rnorm(30, 10), rnorm(30, 14)), g = rep(c("a", "b"), each = 30), z = rnorm(60)); p <- write_data(df, "hyp_dec.csv")
+  r <- qc_run_hypothesis(list(id = "H2", text = "y differs by g", spec = list(goal = "difference", outcome = "y", group = "g")), ctx_for(p))
+  expect_equal(c(r$lab1, r$lab0), c("H2", "H02"))
+  expect_match(r$h0, "does not differ"); expect_true(r$decision$rejected); expect_match(r$decision$short, "H02 rejected")
+  expect_match(r$paragraph, "H02 is rejected")
+  txt <- officer::docx_summary(officer::read_docx(r$files[["docx"]]))$text
+  expect_true(any(grepl("Null hypothesis (H02)", txt, fixed = TRUE))); expect_true(any(grepl("^Decision: H02 is rejected", txt)))
+  r2 <- qc_run_hypothesis(list(id = "H3", text = "z related to y", spec = list(goal = "relationship", var1 = "z", var2 = "y")), ctx_for(p))
+  expect_true(is.logical(r2$decision$rejected))
+})
