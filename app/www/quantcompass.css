@@ -84,3 +84,20 @@ details summary { cursor: pointer; color: var(--qc-blue); font-weight: 600; }
 
 /* Inputs fill their panel */
 .shiny-input-container:not(.shiny-input-container-inline) { width: 100%; max-width: 100%; }
+
+/* v0.3: codebook check, preparation, final data gate, breakdown */
+.sym { display: inline-block; width: 1.4em; text-align: center; font-weight: 700; }
+.sym-ok { color: #047857; } .sym-warn { color: #b45309; } .sym-missing { color: #b91c1c; }
+.cbtable { max-height: 520px; overflow-y: auto; border: 1px solid var(--qc-line); border-radius: 10px; }
+.cbtable table { margin: 0; } .cbtable th { position: sticky; top: 0; background: #f8fafd; }
+.row-warn td { background: #fffaf0; } .row-missing td { background: #fff5f5; }
+.flow { border-left: 3px solid var(--qc-blue); padding: .2rem 0 .2rem .9rem; margin: .4rem 0 .8rem; font-variant-numeric: tabular-nums; }
+.flow div { padding: .15rem 0; } .flow div:last-child { font-weight: 700; color: var(--qc-ink); }
+.gate-n { font-family: var(--qc-display); margin: .3rem 0 1rem; } .gate-n .big { font-size: 2.6rem; font-weight: 700; color: var(--qc-blue); }
+.excl { border-bottom: 1px dashed var(--qc-line); padding: .3rem 0; } .excl .form-check { margin-bottom: 0; }
+.rb { border: 1px solid #f5d9a8; background: #fffaf0; border-radius: 10px; padding: .55rem .75rem; margin: .5rem 0; }
+.sugg { border: 1px solid var(--qc-line); border-radius: 10px; padding: .5rem .7rem; margin: .4rem 0; }
+.openq { background: #fff7ed; border-left: 4px solid var(--qc-amber); padding: .5rem .8rem; border-radius: 0 10px 10px 0; margin: .5rem 0; font-size: .92rem; }
+.opt { border-left: 3px solid #cfdcf0; padding: .25rem 0 .25rem .7rem; margin: .35rem 0; }
+.codes { max-height: 220px; overflow-y: auto; }
+.mlr-ok { color: #047857; } .mlr-warn { color: #b45309; } .mlr-no { color: #b91c1c; }
