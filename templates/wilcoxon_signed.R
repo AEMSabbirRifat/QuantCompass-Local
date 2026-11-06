@@ -4,6 +4,7 @@
 
 # ---- 1. Load data ----
 {{DATA_LOAD}}
+qc_side <- if ("{{ALTERNATIVE}}" == "two.sided") "" else " (one-sided, direction stated in advance)"
 
 # ---- 2. Select the two measurements (one row per person) ----
 var1 <- "{{VAR1}}"
@@ -25,8 +26,8 @@ apa <- sprintf(paste0(
   "A Wilcoxon signed-rank test showed %s difference between %s (Mdn = %s) and %s (Mdn = %s), ",
   "V = %s, p %s, matched-pairs rank-biserial r = %s, n = %d pairs (%d with non-zero differences)."),
   sig, qc_lab(var1), qc_fmt(stats::median(x1)), qc_lab(var2), qc_fmt(stats::median(x2)),
-  qc_fmt(V, 1), qc_fmt_p(ws$p.value), qc_fmt_r(r_rb), length(diffs), length(nz))
+  qc_fmt(V, 1), paste0(qc_fmt_p(ws$p.value), qc_side), qc_fmt_r(r_rb), length(diffs), length(nz))
 result <- list(test = "wilcoxon_signed", n_used = cc$n_used, n_excluded = cc$n_excluded,
   measures = data.frame(measure = c(var1, var2), n = length(diffs), median = c(stats::median(x1), stats::median(x2)), iqr = c(stats::IQR(x1), stats::IQR(x2))),
-  V = V, p = ws$p.value, rank_biserial = r_rb, n_nonzero = length(nz), apa = apa, session = qc_session())
+  V = V, p = ws$p.value, alternative = "{{ALTERNATIVE}}", rank_biserial = r_rb, n_nonzero = length(nz), apa = apa, session = qc_session())
 cat(apa, "\n")

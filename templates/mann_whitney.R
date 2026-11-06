@@ -4,6 +4,7 @@
 
 # ---- 1. Load data ----
 {{DATA_LOAD}}
+qc_side <- if ("{{ALTERNATIVE}}" == "two.sided") "" else " (one-sided, direction stated in advance)"
 
 # ---- 2. Select variables and remove incomplete cases ----
 outcome <- "{{OUTCOME}}"
@@ -29,10 +30,10 @@ apa <- sprintf(paste0(
   "A Mann-Whitney U test showed %s difference in %s between %s (Mdn = %s, n = %d) and %s (Mdn = %s, n = %d), ",
   "U = %s, p %s, rank-biserial r = %s."),
   sig, qc_lab(outcome), qc_level_lab(group, lv[1]), qc_fmt(stats::median(y1)), n1, qc_level_lab(group, lv[2]), qc_fmt(stats::median(y2)), n2,
-  qc_fmt(U, 1), qc_fmt_p(mw$p.value), qc_fmt_r(r_rb))
+  qc_fmt(U, 1), paste0(qc_fmt_p(mw$p.value), qc_side), qc_fmt_r(r_rb))
 result <- list(
   test = "mann_whitney", n_used = cc$n_used, n_excluded = cc$n_excluded,
   groups = data.frame(group = lv, n = c(n1, n2), median = c(stats::median(y1), stats::median(y2)),
                       iqr = c(stats::IQR(y1), stats::IQR(y2))),
-  U = U, p = mw$p.value, rank_biserial = r_rb, apa = apa, session = qc_session())
+  U = U, p = mw$p.value, alternative = "{{ALTERNATIVE}}", rank_biserial = r_rb, apa = apa, session = qc_session())
 cat(apa, "\n")

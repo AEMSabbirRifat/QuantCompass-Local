@@ -4,6 +4,7 @@
 
 # ---- 1. Load data ----
 {{DATA_LOAD}}
+qc_side <- if ("{{ALTERNATIVE}}" == "two.sided") "" else " (one-sided, direction stated in advance)"
 
 # ---- 2. Select variables and remove incomplete cases ----
 outcome <- "{{OUTCOME}}"
@@ -34,13 +35,13 @@ apa <- sprintf(paste0(
   "and %s (M = %s, SD = %s, n = %d), t(%s) = %s, p %s, d = %s, 95%% CI [%s, %s]."),
   sig, qc_lab(outcome), qc_level_lab(group, lv[1]), qc_fmt(mean(y1)), qc_fmt(stats::sd(y1)), n1,
   qc_level_lab(group, lv[2]), qc_fmt(mean(y2)), qc_fmt(stats::sd(y2)), n2,
-  qc_fmt(tt$parameter), qc_fmt(tt$statistic), qc_fmt_p(tt$p.value),
+  qc_fmt(tt$parameter), qc_fmt(tt$statistic), paste0(qc_fmt_p(tt$p.value), qc_side),
   qc_fmt(cohen_d), qc_fmt(d_ci[1]), qc_fmt(d_ci[2]))
 result <- list(
   test = "ttest_independent", n_used = cc$n_used, n_excluded = cc$n_excluded,
   groups = data.frame(group = lv, n = c(n1, n2), mean = c(mean(y1), mean(y2)), sd = c(stats::sd(y1), stats::sd(y2))),
   t = unname(tt$statistic), df = unname(tt$parameter), p = tt$p.value,
-  mean_diff = unname(-diff(tt$estimate)), mean_diff_ci = as.numeric(tt$conf.int),
+  mean_diff = unname(-diff(tt$estimate)), mean_diff_ci = as.numeric(stats::t.test(y ~ g, var.equal = FALSE)$conf.int), alternative = "{{ALTERNATIVE}}",
   cohen_d = cohen_d, cohen_d_ci = d_ci,
   assumptions = list(normality = normality, levene = levene),
   apa = apa, session = qc_session())
