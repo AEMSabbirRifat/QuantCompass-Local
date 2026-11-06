@@ -49,6 +49,7 @@ qc_sentence <- function(spec, data) {
                          if (length(spec$predictors) > 1) "together predict" else "predicts", L(spec$outcome)),
     reliability = sprintf("We will check whether the %d items (%s) form a reliable scale%s.", length(spec$items),
                           qc_and(spec$items), if (length(spec$reverse)) paste0(", with ", qc_and(spec$reverse), " reverse-coded") else ""),
+    mediation = sprintf("We will test whether %s mediates the relationship between %s and %s.", L(spec$mediator), L(spec$var1), L(spec$outcome)),
     describe = "We will describe the selected variables.")
 }
 
@@ -117,6 +118,12 @@ qc_result_tables <- function(id, r) {
     reliability_alpha = list(qc_tab("Item analysis", data.frame(Item = r$items$item, Reversed = ifelse(r$items$reversed, "yes", ""), M = f(r$items$mean), SD = f(r$items$sd),
       `Item-total r` = fr(r$items$corrected_item_total_r), `Alpha if deleted` = if (all(is.na(r$items$alpha_if_deleted))) "" else fr(r$items$alpha_if_deleted), check.names = FALSE),
       note = sprintf("Cronbach's alpha = %s. Scale score: M = %s, SD = %s.", fr(r$alpha), f(r$scale_mean), f(r$scale_sd)))),
+    mediation = { pt <- r$paths
+      list(qc_tab("Regression paths of the mediation model", data.frame(Path = pt$path, b = f(pt$b), SE = f(pt$se), t = f(pt$t), df = pt$df, p = sapply(pt$p, fp), check.names = FALSE),
+             note = if (isTRUE(r$robust)) "SE, t and p use HC3 heteroscedasticity-robust estimates." else NULL),
+           qc_tab("Indirect effect", data.frame(Effect = "Indirect effect (a x b)", Estimate = f(r$ab, 3), `95% bootstrap CI` = sprintf("[%s, %s]", f(r$ab_ci[1], 3), f(r$ab_ci[2], 3)),
+             `Standardised` = f(r$ab_cs, 3), `Share of total effect` = if (is.na(r$prop_mediated)) "-" else sprintf("%.0f%%", 100 * r$prop_mediated), N = r$n_used, check.names = FALSE),
+             note = sprintf("Percentile bootstrap with %s resamples (seed 2026).", format(r$boot, big.mark = ",")))) },
     list())
 }
 
@@ -156,6 +163,10 @@ qc_explain <- function(id, r, s) {
                                   if (sig) "The predictors together improve prediction significantly (p < .05)." else "The predictors together do not improve prediction significantly.", 100 * r$accuracy_at_0.5),
     reliability_alpha = sprintf("Cronbach's alpha shows how consistently the items measure the same thing (0 to 1; .70 or higher is usually acceptable). Here alpha = %s. %s",
                                 qc_fmt_r(r$alpha), if (r$alpha >= .7) "The items can be averaged into one scale score." else "The items are not consistent enough to average without checking the weak items."),
+    mediation = sprintf("A mediation analysis asks whether %s is linked to %s partly because it changes %s, which in turn changes %s. The indirect effect (a x b = %s) is that part. Its 95%% bootstrap interval [%s, %s] %s. The direct effect (c' = %s) is what remains of the link once %s is taken into account. With survey data collected at one time point, this shows a pattern consistent with mediation, not proof of cause and effect.",
+                        qc_lab(s$var1), qc_lab(s$outcome), qc_lab(s$mediator), qc_lab(s$outcome), qc_fmt(r$ab, 3), qc_fmt(r$ab_ci[1], 3), qc_fmt(r$ab_ci[2], 3),
+                        if (r$excludes_zero) "does not include zero, so the indirect effect is statistically significant" else "includes zero, so there is not enough evidence of an indirect effect",
+                        qc_fmt(r$c_prime), qc_lab(s$mediator)),
     "")
 }
 
@@ -163,7 +174,7 @@ qc_explain <- function(id, r, s) {
 qc_paste_paragraph <- function(h, screen, result) {
   ch <- screen$checks; failed <- ch[!is.na(ch$met) & !ch$met, ]
   screening <- if (nrow(failed) == 0) "All assumption checks were met." else paste0("The following assumption checks were not met: ",
-    qc_and(sprintf("%s (%s)", tolower(failed$check), failed$value)), ".")
+    qc_and(sprintf("%s (%s)", sub("^(.)", "\\L\\1", failed$check, perl = TRUE), failed$value)), ".")
   sprintf("To test %s (%s), the assumptions were screened before the analysis was chosen. %s %s %s",
           h$id, sub("\\.$", "", h$text), screening, screen$decision$reason, result$apa)
 }
@@ -275,22 +286,33 @@ qc_write_report <- function(title, sections, out_base) {
 }
 
 # ---- Formal hypotheses (H1 / H0) and the decision after the test ----
-qc_cap_first <- function(x) paste0(toupper(substr(x, 1, 1)), substring(x, 2))
 qc_hypothesis_pair <- function(spec, data, hid = "H1") {
   L <- qc_lab
+  one_sided <- !is.null(spec$alternative) && spec$alternative != "two.sided"
+  dir <- if (is.null(spec$direction)) NA_character_ else spec$direction        # "positive" / "negative" (relationships, mediation)
+  hi <- if (is.null(spec$expect_higher)) NA_character_ else as.character(spec$expect_higher)   # group expected higher (two groups)
+  expect_sign <- NA_real_; expect_text <- NA_character_
   p <- switch(spec$goal,
     difference = {
       lv <- levels(factor(data[[spec$group]]))
       if (length(lv) == 2) { a <- qc_group_name(spec$group, lv[1]); b <- qc_group_name(spec$group, lv[2])
-        list(h1 = sprintf("%s differs between %s and %s.", L(spec$outcome), a, b),
+        if (!is.na(hi) && hi %in% lv) { up <- qc_group_name(spec$group, hi); lo <- qc_group_name(spec$group, setdiff(lv, hi))
+          expect_sign <- if (hi == lv[1]) 1 else -1; expect_text <- sprintf("higher %s in %s", L(spec$outcome), up)
+          list(h1 = sprintf("%s is higher in %s than in %s.", L(spec$outcome), up, lo),
+               h0 = if (one_sided) sprintf("%s is not higher in %s than in %s.", L(spec$outcome), up, lo) else sprintf("%s does not differ between %s and %s.", L(spec$outcome), a, b))
+        } else list(h1 = sprintf("%s differs between %s and %s.", L(spec$outcome), a, b),
              h0 = sprintf("%s does not differ between %s and %s.", L(spec$outcome), a, b))
       } else list(h1 = sprintf("%s differs between at least two of the %d groups of %s.", L(spec$outcome), length(lv), L(spec$group)),
                   h0 = sprintf("%s is the same in all %d groups of %s.", L(spec$outcome), length(lv), L(spec$group)))
     },
     paired_difference = list(h1 = sprintf("Scores differ between %s and %s.", L(spec$var1), L(spec$var2)),
                              h0 = sprintf("There is no difference between %s and %s.", L(spec$var1), L(spec$var2))),
-    relationship = list(h1 = sprintf("%s is related to %s (the correlation is not zero).", L(spec$var1), L(spec$var2)),
-                        h0 = sprintf("%s is not related to %s (the correlation is zero).", L(spec$var1), L(spec$var2))),
+    relationship = if (!is.na(dir)) { expect_sign <- if (dir == "positive") 1 else -1; expect_text <- paste("a", dir, "relationship")
+        list(h1 = sprintf("%s is %sly related to %s (the correlation is %s zero).", L(spec$var1), dir, L(spec$var2), if (dir == "positive") "above" else "below"),
+             h0 = if (one_sided) sprintf("%s is not %sly related to %s (the correlation is zero or %s).", L(spec$var1), dir, L(spec$var2), if (dir == "positive") "negative" else "positive")
+                  else sprintf("%s is not related to %s (the correlation is zero).", L(spec$var1), L(spec$var2)))
+      } else list(h1 = sprintf("%s is related to %s (the correlation is not zero).", L(spec$var1), L(spec$var2)),
+                  h0 = sprintf("%s is not related to %s (the correlation is zero).", L(spec$var1), L(spec$var2))),
     association = list(h1 = sprintf("%s and %s are associated.", L(spec$var1), L(spec$var2)),
                        h0 = sprintf("%s and %s are independent (not associated).", L(spec$var1), L(spec$var2))),
     prediction = { pr <- qc_and(sapply(spec$predictors, L)); several <- length(spec$predictors) > 1
@@ -299,11 +321,25 @@ qc_hypothesis_pair <- function(spec, data, hid = "H1") {
     reliability = list(h1 = sprintf("The %d items form a reliable scale (Cronbach's alpha of at least .70).", length(spec$items)),
                        h0 = sprintf("The %d items do not form a reliable scale (Cronbach's alpha below .70).", length(spec$items)),
                        note = "Reliability is judged against the conventional .70 benchmark, not with a significance test."),
+    mediation = { if (!is.na(dir)) { expect_sign <- if (dir == "positive") 1 else -1; expect_text <- paste("a", dir, "indirect effect") }
+      list(h1 = sprintf("%s mediates the relationship between %s and %s (the indirect effect is %s).", L(spec$mediator), L(spec$var1), L(spec$outcome),
+                        if (is.na(dir)) "not zero" else dir),
+           h0 = sprintf("%s does not mediate the relationship between %s and %s (the indirect effect is zero).", L(spec$mediator), L(spec$var1), L(spec$outcome)),
+           note = "Judged by the 95% bootstrap confidence interval of the indirect effect: the null hypothesis is rejected when the interval does not include zero.") },
     list(h1 = "Not applicable.", h0 = "Not applicable."))
   p$h1 <- qc_cap_first(p$h1); p$h0 <- qc_cap_first(p$h0)
-  if (is.null(p$note)) p$note <- "Tested two-sided at a significance level of alpha = .05."
-  p$lab1 <- hid; p$lab0 <- paste0("H0", sub("^H", "", hid))
+  if (is.null(p$note)) p$note <- if (one_sided) "Tested one-sided (the direction was stated before the analysis) at a significance level of alpha = .05."
+    else if (!is.na(expect_sign)) sprintf("Tested two-sided at alpha = .05. The research hypothesis counts as supported only if the result is significant and in the stated direction (%s).", expect_text)
+    else "Tested two-sided at a significance level of alpha = .05."
+  p$lab1 <- hid; p$lab0 <- paste0("H0", sub("^H", "", hid)); p$expect_sign <- expect_sign; p$expect_text <- expect_text
   p
+}
+
+# Sign of the observed effect (+1 / -1) for tests where a direction can be stated
+qc_effect_sign <- function(id, r) {
+  e <- switch(id, correlation_pearson = r$r, correlation_spearman = r$rho, ttest_independent = r$mean_diff,
+              mann_whitney = r$rank_biserial, mediation = r$ab, NA)
+  if (is.null(e) || is.na(e)) NA else sign(e)
 }
 
 qc_decision_line <- function(id, r, pair) {
@@ -313,10 +349,24 @@ qc_decision_line <- function(id, r, pair) {
       text = if (ok) sprintf("Decision: %s is supported. Cronbach's alpha = %s reaches the conventional benchmark of .70 (no significance test is involved).", pair$lab1, qc_fmt_r(r$alpha))
              else sprintf("Decision: %s is not supported. Cronbach's alpha = %s is below the conventional benchmark of .70.", pair$lab1, qc_fmt_r(r$alpha))))
   }
+  es <- if (is.null(pair$expect_sign)) NA else pair$expect_sign
+  wrong_way <- function(evidence) list(rejected = FALSE, short = sprintf("%s not supported (opposite direction)", pair$lab1),
+    text = sprintf("Decision: %s, but the effect goes in the opposite direction to %s (which expected %s). %s is therefore not supported.", evidence, pair$lab1, pair$expect_text, pair$lab1))
+  if (id == "mediation") {
+    ci <- sprintf("95%% bootstrap CI [%s, %s]", qc_fmt(r$ab_ci[1], 3), qc_fmt(r$ab_ci[2], 3))
+    if (!r$excludes_zero) return(list(rejected = FALSE, short = sprintf("%s not rejected", pair$lab0),
+      text = sprintf("Decision: %s is not rejected. The interval of the indirect effect (ab = %s, %s) includes zero, so the data do not provide enough evidence for %s.", pair$lab0, qc_fmt(r$ab, 3), ci, pair$lab1)))
+    if (!is.na(es) && sign(r$ab) != es) return(wrong_way(sprintf("the indirect effect is significant (ab = %s, %s)", qc_fmt(r$ab, 3), ci)))
+    return(list(rejected = TRUE, short = sprintf("%s rejected - %s supported", pair$lab0, pair$lab1),
+      text = sprintf("Decision: %s is rejected. The interval of the indirect effect (ab = %s, %s) does not include zero. The data support %s: %s", pair$lab0, qc_fmt(r$ab, 3), ci, pair$lab1, pair$h1)))
+  }
   p <- r[["p"]]
   if (is.null(p) || is.na(p)) return(list(rejected = NA, short = "No decision", text = "Decision: no significance test was performed."))
-  if (p < .05) list(rejected = TRUE, short = sprintf("%s rejected - %s supported", pair$lab0, pair$lab1),
-    text = sprintf("Decision: %s is rejected (p %s, below the significance level of .05). The data support %s: %s", pair$lab0, qc_fmt_p(p), pair$lab1, pair$h1))
-  else list(rejected = FALSE, short = sprintf("%s not rejected", pair$lab0),
+  if (p < .05) {
+    s <- qc_effect_sign(id, r)
+    if (!is.na(es) && !is.na(s) && s != es) return(wrong_way(sprintf("the result is statistically significant (p %s)", qc_fmt_p(p))))
+    list(rejected = TRUE, short = sprintf("%s rejected - %s supported", pair$lab0, pair$lab1),
+      text = sprintf("Decision: %s is rejected (p %s, below the significance level of .05). The data support %s: %s", pair$lab0, qc_fmt_p(p), pair$lab1, pair$h1))
+  } else list(rejected = FALSE, short = sprintf("%s not rejected", pair$lab0),
     text = sprintf("Decision: %s is not rejected (p %s, not below the significance level of .05). The data do not provide enough evidence for %s. Not rejecting %s does not prove that it is true.", pair$lab0, qc_fmt_p(p), pair$lab1, pair$lab0))
 }

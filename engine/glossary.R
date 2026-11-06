@@ -106,7 +106,17 @@ qc_glossary <- list(
   "item-total correlation" = list(pattern = "(?i)item-total",
     def = "How strongly one item relates to the sum of the other items. Below .30, the item may not fit the scale."),
   "reverse-coding" = list(pattern = "(?i)reverse-cod(?:ed|ing)",
-    def = "Flipping a negatively worded item (e.g. 'I dislike my job') so high scores mean the same thing as on the other items. On a 1-5 scale: 1 becomes 5, 2 becomes 4.")
+    def = "Flipping a negatively worded item (e.g. 'I dislike my job') so high scores mean the same thing as on the other items. On a 1-5 scale: 1 becomes 5, 2 becomes 4."),
+  "mediation analysis" = list(pattern = "(?i)\\bmediation (?:analysis|model)\\b|\\bmediates\\b|\\bmediator\\b",
+    def = "Tests whether a predictor (X) is linked to an outcome (Y) partly through a third variable, the mediator (M): X changes M, and M changes Y. Example: work-study conflict lowers grades, and lower grades lower well-being."),
+  "indirect effect" = list(pattern = "(?i)\\bindirect effect\\b",
+    def = "The part of the link between X and Y that runs through the mediator, calculated as a x b (path X to M times path M to Y). If its confidence interval excludes zero, the mediation is statistically significant."),
+  "direct effect" = list(pattern = "(?i)\\bdirect effect\\b|\\bc'(?= =)",
+    def = "What remains of the link between X and Y after the mediator is taken into account (c'). If it is near zero while the indirect effect is significant, the mediator explains most of the link."),
+  "bootstrap" = list(pattern = "(?i)\\bbootstrap(?:ped|ping)?\\b",
+    def = "Repeatedly re-draws the sample (here 5,000 times, with replacement) and re-calculates the result each time. The middle 95% of these results form the confidence interval. It does not assume a normal distribution."),
+  "one-sided test" = list(pattern = "(?i)\\bone-sided\\b",
+    def = "A test of a direction stated in advance (e.g. 'group A scores higher'). It has more power for that direction but cannot detect an effect in the opposite direction. Only use it if the direction was planned before seeing the data.")
 )
 
 # Split text into plain segments and glossary-term segments (first occurrence per report only)

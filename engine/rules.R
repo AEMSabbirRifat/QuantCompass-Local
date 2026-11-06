@@ -6,6 +6,8 @@
 #              outcome, group, var1, var2, predictors (vector), items (vector), variables (vector)
 
 qc_refs <- list(
+  hayes     = "Hayes (2022), Introduction to Mediation, Moderation, and Conditional Process Analysis (3rd ed.)",
+  preacher  = "Preacher & Hayes (2008), Behavior Research Methods, 40(3), 879-891",
   welch_t   = "Delacre, Lakens & Leys (2017), Int. Review of Social Psychology, 30(1)",
   welch_f   = "Delacre et al. (2019), Int. Review of Social Psychology, 32(1)",
   cohen     = "Cohen (1988), Statistical Power Analysis for the Behavioral Sciences",
@@ -49,6 +51,7 @@ qc_suggest <- function(data, spec) {
     association       = qc_rule_association(data, spec),
     prediction        = qc_rule_prediction(data, spec),
     reliability       = qc_rule_reliability(data, spec),
+    mediation         = qc_rule_mediation(data, spec),
     stop("Unknown goal: ", goal))
 }
 
@@ -154,7 +157,7 @@ qc_rule_relationship <- function(data, spec) {
       n, qc_fmt_r(qc_mde_r(n))) }
   non_normal <- (qc_non_normal(d[[spec$var1]]) || qc_non_normal(d[[spec$var2]])) && n < 30
   ordinal <- "ordinal" %in% c(t1, t2)
-  p <- list(VAR1 = spec$var1, VAR2 = spec$var2)
+  p <- list(VAR1 = spec$var1, VAR2 = spec$var2, ALTERNATIVE = if (is.null(spec$alternative)) "two.sided" else spec$alternative)
   opts <- list(
     qc_option("correlation_pearson", "Pearson correlation", if (non_normal || ordinal) "alternative" else "recommended",
       "Measures the strength of a linear relationship between two numeric variables.", status, msgs, p, c("cohen", "openintro")),
@@ -228,4 +231,20 @@ qc_rule_reliability <- function(data, spec) {
                        SCALE_MIN = if (is.null(spec$scale_min)) rng[1] else spec$scale_min,
                        SCALE_MAX = if (is.null(spec$scale_max)) rng[2] else spec$scale_max),
     c("nunnally", "field")))
+}
+
+qc_rule_mediation <- function(data, spec) {
+  vs <- c(spec$var1, spec$mediator, spec$outcome); qc_need(data, vs)
+  if (length(unique(vs)) < 3) return(qc_block("Predictor, mediator and outcome must be three different variables."))
+  d <- qc_complete(data, vs)$data; n <- nrow(d)
+  nonnum <- vs[!vapply(d[vs], is.numeric, logical(1))]
+  if (length(nonnum)) return(qc_block(sprintf("%s is not numeric. This mediation model needs numeric predictor, mediator and outcome.", qc_and(nonnum)),
+                                      "Use a numeric score, or code a two-group predictor as 0/1."))
+  if (n < 20) return(qc_block(sprintf("Only %d complete cases; a mediation model needs clearly more.", n)))
+  msgs <- character(); status <- "ok"
+  if (n < 100) { status <- "warn"; msgs <- sprintf("With N = %d, only medium-to-large indirect effects can be detected reliably (Fritz & MacKinnon, 2007, suggest about 100+ cases for medium paths).", n) }
+  p <- list(VAR1 = spec$var1, MEDIATOR = spec$mediator, OUTCOME = spec$outcome, ROBUST = if (isTRUE(spec$robust)) "TRUE" else "FALSE")
+  list(qc_option("mediation", "Mediation analysis (bootstrap)", "recommended",
+    "Tests whether the predictor affects the outcome through the mediator (indirect effect a x b), with a bootstrap confidence interval.",
+    status, msgs, p, c("hayes", "preacher")))
 }

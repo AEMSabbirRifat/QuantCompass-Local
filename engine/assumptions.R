@@ -8,7 +8,7 @@
 # Mean-based tests are kept when normality fails but every group has n >= 30 and no extreme
 # outliers (central limit theorem; Field, 2018). Rating-scale items always use rank-based tests.
 
-qc_group_name <- function(v, l) { lab <- qc_level_lab(v, l); if (lab != as.character(l)) lab else paste(qc_lab(v), l) }
+qc_group_name <- function(v, l) { lab <- qc_level_lab(v, l); if (lab != as.character(l)) lab else if (grepl("[A-Za-z]", l)) as.character(l) else paste(qc_lab(v), l) }
 
 qc_rule_refs <- list(
   kim      = "Kim (2013), Restorative Dentistry & Endodontics, 38(1), 52-54",
@@ -21,7 +21,9 @@ qc_rule_refs <- list(
   vif      = "Hair et al. (2019), Multivariate Data Analysis (8th ed.)",
   cook     = "Cook & Weisberg (1982), Residuals and Influence in Regression",
   peduzzi  = "Peduzzi et al. (1996), Journal of Clinical Epidemiology, 49(12)",
-  nunnally = "Nunnally & Bernstein (1994), Psychometric Theory (3rd ed.)")
+  nunnally = "Nunnally & Bernstein (1994), Psychometric Theory (3rd ed.)",
+  hayes    = "Hayes (2022), Introduction to Mediation, Moderation, and Conditional Process Analysis (3rd ed.)",
+  preacher = "Preacher & Hayes (2008), Behavior Research Methods, 40(3), 879-891")
 
 # Sample skewness G1 and excess kurtosis G2 (same definitions as SPSS) with standard errors
 qc_shape <- function(y) {
@@ -67,6 +69,8 @@ qc_normality_check <- function(y, what) {
 # Extreme outliers: beyond 3 x IQR from the quartiles (Tukey, 1977)
 qc_outlier_check <- function(y, what) {
   y <- y[!is.na(y)]; q <- stats::quantile(y, c(.25, .75)); iqr <- q[2] - q[1]
+  if (iqr == 0 && length(unique(y)) > 1) return(qc_check_row(paste("Extreme outliers:", what), "Beyond 3 x IQR (Tukey)", "IQR = 0", FALSE,
+    sprintf("At least half of the values are identical (%s), so the outlier rule cannot separate outliers. Values this concentrated do not suit mean-based tests.", qc_fmt(q[1]))))
   k <- sum(y < q[1] - 3 * iqr | y > q[2] + 3 * iqr)
   qc_check_row(paste("Extreme outliers:", what), "Beyond 3 x IQR (Tukey)", sprintf("%d case(s)", k), k == 0,
     if (k == 0) "No extreme outliers." else sprintf("%d extreme value(s); means can be distorted by these.", k))
@@ -101,6 +105,7 @@ qc_screen <- function(data, spec) {
     association = qc_screen_association(data, spec),
     prediction = qc_screen_prediction(data, spec),
     reliability = qc_screen_reliability(data, spec),
+    mediation = qc_screen_mediation(data, spec),
     describe = list(checks = qc_check_row("Not needed", "-", "-", TRUE, "Descriptive statistics make no assumptions."),
                     decision = qc_decision("descriptives", "descriptive", "Descriptive statistics were requested.", character())),
     stop("Unknown goal"))
@@ -253,4 +258,19 @@ qc_screen_reliability <- function(data, spec) {
       if (nrow(X) >= 30) "Enough responses for a stable estimate." else "Few responses; alpha will be imprecise."))
   list(checks = checks, decision = qc_decision("reliability_alpha", "reliability",
     "Cronbach's alpha was used to assess internal consistency, with item analysis to check each item.", "nunnally"))
+}
+
+# Mediation: both regressions (mediator model and outcome model) are screened like any regression.
+# The indirect effect is tested with a bootstrap interval, which does not assume normality.
+qc_screen_mediation <- function(data, spec) {
+  sm <- qc_screen_prediction(data, list(goal = "prediction", outcome = spec$mediator, predictors = spec$var1))
+  sy <- qc_screen_prediction(data, list(goal = "prediction", outcome = spec$outcome, predictors = c(spec$var1, spec$mediator)))
+  tag <- function(ch, what) { ch$check <- paste0(ch$check, " - ", what); ch }
+  checks <- rbind(tag(sm$checks[sm$checks$check != "Multicollinearity", ], "mediator model"), tag(sy$checks, "outcome model"))
+  robust <- isTRUE(sm$robust) || isTRUE(sy$robust)
+  reason <- paste("The hypothesis states that the effect works through a mediator, so a regression-based simple mediation analysis was used.",
+    "The indirect effect was tested with a percentile bootstrap confidence interval (5,000 resamples), which does not assume that the indirect effect is normally distributed.",
+    if (robust) "Because residual variance was not constant in at least one model, the individual path tests use HC3 robust standard errors."
+    else "Residual variance was constant, so ordinary standard errors were used for the path tests.")
+  list(checks = checks, decision = qc_decision("mediation", "regression-based (bootstrap)", reason, c("hayes", "preacher", "hc3", "vif", "cook")), robust = robust)
 }

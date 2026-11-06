@@ -214,6 +214,11 @@ qc_assumption_figures <- function(data, spec, screen) {
     }
     return(figs)
   }
+  if (id == "mediation") {
+    d <- qc_complete(data, c(s$var1, s$mediator, s$outcome))$data
+    m <- stats::lm(stats::reformulate(sprintf("`%s`", c(s$var1, s$mediator)), response = sprintf("`%s`", s$outcome)), data = d)
+    return(c(qc_plot_normality(stats::residuals(m), NULL, "residuals of the outcome model"), qc_plot_residuals(m)))
+  }
   if (id == "reliability_alpha") {
     d <- qc_complete(data, s$items)$data
     return(list(qc_plot_hist_grid(d, s$items)))
@@ -248,7 +253,42 @@ qc_result_figures <- function(data, spec, screen, result) {
   if (id == "regression_linear") return(list(qc_plot_coef(result$coefficients, qc_lab(s$outcome))))
   if (id == "regression_logistic") return(list(qc_plot_or(result$coefficients, qc_lab(s$outcome))))
   if (id == "reliability_alpha") return(list(qc_plot_items(result$items)))
+  if (id == "mediation") return(list(qc_plot_mediation(result, s), qc_plot_boot(result)))
   list()
+}
+
+# Path diagram of a simple mediation model with the estimated paths
+qc_plot_mediation <- function(r, s) {
+  pv <- function(p) if (p < .001) "***" else if (p < .01) "**" else if (p < .05) "*" else ""
+  pt <- r$paths; lab <- function(i, name) sprintf("%s = %s%s", name, qc_fmt(pt$b[i]), pv(pt$p[i]))
+  wrap <- function(x) paste(strwrap(qc_cap1(x), 22), collapse = "\n")
+  nodes <- data.frame(x = c(0, 1, 2), y = c(0, 1, 0), lab = c(wrap(qc_lab(s$var1)), wrap(qc_lab(s$mediator)), wrap(qc_lab(s$outcome))))
+  arr <- ggplot2::arrow(length = ggplot2::unit(.25, "cm"), type = "closed")
+  g <- ggplot2::ggplot() +
+    ggplot2::geom_segment(ggplot2::aes(x = .18, y = .12, xend = .82, yend = .88), arrow = arr, colour = qc_col$accent, linewidth = .8) +
+    ggplot2::geom_segment(ggplot2::aes(x = 1.18, y = .88, xend = 1.82, yend = .12), arrow = arr, colour = qc_col$accent, linewidth = .8) +
+    ggplot2::geom_segment(ggplot2::aes(x = .3, y = 0, xend = 1.7, yend = 0), arrow = arr, colour = qc_col$accent2, linewidth = .8) +
+    ggplot2::geom_label(data = nodes, ggplot2::aes(x, y, label = lab), size = 3.4, label.padding = ggplot2::unit(.45, "lines"), fill = "#f2f7ff", colour = qc_col$ink) +
+    ggplot2::annotate("text", x = .38, y = .58, label = lab(1, "a"), size = 3.4, hjust = 1, colour = qc_col$ink) +
+    ggplot2::annotate("text", x = 1.62, y = .58, label = lab(2, "b"), size = 3.4, hjust = 0, colour = qc_col$ink) +
+    ggplot2::annotate("text", x = 1, y = -.14, label = sprintf("%s (total c = %s%s)", lab(3, "c'"), qc_fmt(pt$b[4]), pv(pt$p[4])), size = 3.4, colour = qc_col$ink) +
+    ggplot2::annotate("text", x = 1, y = 1.3, label = sprintf("Indirect effect ab = %s, 95%% CI [%s, %s]", qc_fmt(r$ab, 3), qc_fmt(r$ab_ci[1], 3), qc_fmt(r$ab_ci[2], 3)),
+                      size = 3.6, fontface = "bold", colour = if (r$excludes_zero) qc_col$accent else qc_col$muted) +
+    ggplot2::coord_cartesian(xlim = c(-.35, 2.35), ylim = c(-.3, 1.4)) + ggplot2::theme_void() +
+    ggplot2::labs(title = "Mediation model")
+  qc_fig(g, "Mediation model with unstandardised path coefficients (* p < .05, ** p < .01, *** p < .001). The indirect effect is a x b; c' is the direct effect that remains when the mediator is included.", 6.5, 3.6)
+}
+
+qc_plot_boot <- function(r) {
+  set.seed(2026)
+  g <- ggplot2::ggplot(data.frame(ab = r$ab), ggplot2::aes(x = ab)) +
+    ggplot2::geom_vline(xintercept = 0, colour = qc_col$neg, linetype = "dashed") +
+    ggplot2::annotate("rect", xmin = r$ab_ci[1], xmax = r$ab_ci[2], ymin = -Inf, ymax = Inf, fill = qc_col$accent, alpha = .12) +
+    ggplot2::geom_point(ggplot2::aes(y = 0), colour = qc_col$accent, size = 3) +
+    ggplot2::geom_errorbarh(ggplot2::aes(y = 0, xmin = r$ab_ci[1], xmax = r$ab_ci[2]), height = .2, colour = qc_col$accent) +
+    ggplot2::scale_y_continuous(NULL, breaks = NULL, limits = c(-1, 1)) +
+    ggplot2::labs(title = "Indirect effect with 95% bootstrap interval", x = "Indirect effect (a x b)") + qc_theme()
+  qc_fig(g, "Estimated indirect effect (dot) and its 95% bootstrap confidence interval (bar and shaded area). If the interval does not cross the dashed zero line, the indirect effect is statistically significant.", 6.5, 2.4)
 }
 
 qc_save_figures <- function(figs, dir, prefix, start = 1) {

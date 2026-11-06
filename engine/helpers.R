@@ -25,7 +25,7 @@ qc_shapiro <- function(y) {
     list(W = unname(s$statistic), p = s$p.value)
   } else list(W = NA, p = NA)
 }
-qc_session <- function() list(engine = "QuantCompass engine 0.1.0",
+qc_session <- function() list(engine = "QuantCompass engine 0.3.0",
                               r_version = R.version.string, date = format(Sys.Date()))
 # Friendly names for variables and categories (set by QuantCompass; empty = use column names)
 qc_lab <- function(v) {
@@ -37,4 +37,20 @@ qc_level_lab <- function(v, level) {
   key <- as.character(level)
   if (!is.null(m) && key %in% names(m) && nzchar(m[[key]])) m[[key]] else key
 }
+# Read any text data file as UTF-8 text (handles UTF-16 exports such as SoSci Survey, BOMs, Latin-1)
+qc_text_file <- function(f, encoding) {
+  b <- readBin(f, "raw", file.info(f)$size)
+  bom <- list("UTF-16LE" = as.raw(c(0xff, 0xfe)), "UTF-16BE" = as.raw(c(0xfe, 0xff)), "UTF-8" = as.raw(c(0xef, 0xbb, 0xbf)))
+  if (length(b) >= length(bom[[encoding]]) && identical(b[seq_along(bom[[encoding]])], bom[[encoding]])) b <- b[-seq_along(bom[[encoding]])]
+  txt <- iconv(list(b), from = encoding, to = "UTF-8")
+  gsub("\r\n?", "\n", txt)
+}
+# Convert columns read as text to numbers where every value is a number
+qc_type_convert <- function(d) {
+  d[] <- lapply(d, function(x) if (is.character(x)) utils::type.convert(x, as.is = TRUE, na.strings = c("", "NA")) else x)
+  d
+}
+# Cronbach's alpha for a matrix of complete item answers
+qc_alpha <- function(m) { m <- as.matrix(m); k <- ncol(m); (k / (k - 1)) * (1 - sum(apply(m, 2, stats::var)) / stats::var(rowSums(m))) }
+qc_cap_first <- function(x) paste0(toupper(substr(x, 1, 1)), substring(x, 2))
 # ---- end of helpers ----
