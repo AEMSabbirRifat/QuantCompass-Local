@@ -1,6 +1,6 @@
 # QuantCompass Local
 
-**Click-only, academically sound statistics for students. Upload your data, describe your hypotheses in plain words, and get thesis-ready results, charts and the exact R script. No coding.**
+**Click-only, academically sound statistics for students. Upload your survey data and codebook, paste your hypotheses as written in your thesis, and get thesis-ready results, charts, a methods section and the exact R script. No coding.**
 
 For each hypothesis QuantCompass **screens the assumptions first**, **chooses the parametric or non-parametric test by fixed, published rules**, runs it, draws the charts, and writes a **Word + HTML report** explaining every decision, with a paragraph you can paste straight into your thesis.
 
@@ -8,7 +8,7 @@ For each hypothesis QuantCompass **screens the assumptions first**, **chooses th
 > - **QuantCompass Local** (this repo): runs on your computer. Your data never leaves it.
 > - **[QuantCompass Web](https://github.com/AEMSabbirRifat/QuantCompass-Web)**: the same app in the browser, no installation (in development).
 
-**Status: v0.2 pilot.** Feedback welcome via Issues.
+**Status: v0.3 pilot.** Feedback welcome via Issues.
 
 ---
 
@@ -24,12 +24,26 @@ That's all. Everything else is clicking.
 
 ## How it works (in the app)
 
+**Part A - Your data**
+
 | Step | What you do | What QuantCompass does |
 |---|---|---|
-| **1. Your data** | Choose your CSV or Excel file, pick the sheet | Checks the data (missing-value codes like 99, decimal commas, text in number columns) and offers one-click fixes. Reads friendly names from a "Codebook" sheet if you have one. |
-| **2. Describe dataset** | One click (optional: split by group) | Tables of all variables, histograms, bar charts, correlation heatmap, missing data, and a ready-to-paste summary paragraph. |
-| **3. Hypotheses** | **Option A**: choose "Compare groups / Before vs after / Relationship / Association / Predict / Scale reliability" and pick columns from lists. **Option B**: fill the Excel hypothesis template (one row per hypothesis) and upload it. | Shows each hypothesis as a plain sentence, e.g. *"We will test whether house value differs between homes near the river and homes not near the river."* You confirm with **Yes, add it**. |
-| **4. Results** | Click **Run all hypotheses** | For each hypothesis: assumption screening, test choice, analysis, charts, report and script. Everything is saved in the `results` folder. |
+| **1. Data & codebook** | Choose your data file and (recommended) your codebook | Reads any format: CSV/TSV/TXT in any encoding (incl. SoSci Survey UTF-16 exports), Excel, OpenDocument, SPSS, Stata, SAS. Reads codebooks from PDF, Word, Excel/CSV, TXT/HTML, Qualtrics (.qsf), LimeSurvey (.lss) or the labels inside an SPSS/Stata file. Shows a check table: ✓ matches, ⚠ needs your decision, ✗ not in the codebook. Nothing marked ⚠ is applied unless you tick it. Scanned PDFs are reported, never guessed. |
+| **2. Prepare** | Switch steps on or off, decide, build | **A** case exclusions suggested from the survey's own rules (unfinished, screened out, failed attention check; speeders optional). **B** skip-logic and rule-break check using only rules defined in your survey, with Keep/Exclude and a short "Why?" (or "No rule breaks, continue"). **C** exclusions by case ID with a reason. **D** scales (mean, sum, WHO-5 index, reverse coding, Cronbach's alpha). **E** groups from plain conditions such as `ES01 is 1,2 and ES02 is 1`. |
+
+**Part B - Final data gate**
+
+| Step | What you do | What QuantCompass does |
+|---|---|---|
+| **3. Final data** | Press **OK, use this data** or **Needs editing** | Shows the final N, variables, scales (alpha) and groups, and one line per filtering step in order (e.g. 269 → 250 → 203 → 170 → 169). OK locks the data and saves the final Excel file, the codebook as applied, a preparation script and a project file. Nothing is analysed before OK. |
+
+**Part C - Analysis**
+
+| Step | What you do | What QuantCompass does |
+|---|---|---|
+| **4. Describe** | One click; choose variables for Table 1 | Tables and charts of all variables, a ready-to-paste summary, Table 1 (sample characteristics), and **Cronbach's alpha for every scale** (item-total correlations, alpha if item deleted, Word report per scale). |
+| **5. Hypotheses** | Paste your hypotheses exactly as written (or upload a sheet with ID + Hypothesis) | Breaks each one down: type (relationship, group difference, mediation), direction, compound parts (one sentence with two claims becomes H1b(i) and H1b(ii)), variables and groups matched from your labels and question texts, the expected outcome, H1 and H0, and open questions where something cannot be matched. Gives 2-3 test options with reasons and assumptions. You choose **Use recommended**, **Choose manually** or **Decide for me**, and confirm. Also understands prediction ("A, B and C predict Y") and reliability ("the items of X form a reliable scale"). **Plan a multiple regression**: pick the outcome and QuantCompass marks every other variable as a suitable (✓), questionable (⚠) or unsuitable (✗) predictor with the reason (items of the outcome scale, filtered questions, unordered codes, little variation), and checks sample size (N ≥ 50 + 8m; Green, 1991) and multicollinearity (VIF, r > .80). |
+| **6. Results** | Click **Run all confirmed hypotheses** | Per hypothesis: assumption screening, test, decision, charts, Word + HTML report and R script. A summary report with an auto-written **methods section** (sample flow, measures, analysis rules), Table 1, the breakdowns and all decisions. Optional: compare with numbers you already reported. |
 
 ## What each hypothesis report contains
 
@@ -57,8 +71,11 @@ A **summary report** combines all hypotheses and includes a software/AI disclosu
 | Predict a numeric outcome | Linear regression | HC3 robust standard errors if variance is not constant |
 | Predict a yes/no outcome | Logistic regression | Warnings for few events per predictor or separation |
 | Scale | Cronbach's alpha + item analysis | - |
+| Mediation (X → M → Y) | Regression paths + percentile bootstrap CI of the indirect effect (5,000 resamples) | HC3 robust path tests if variance is not constant |
 
 Normality is judged by sample size following Kim (2013): Shapiro-Wilk below n = 50, skewness/kurtosis z-scores for n = 50-300, absolute skewness/kurtosis above 300. Mean-based tests are kept when normality fails but every group has n >= 30 and no extreme outliers (central limit theorem). Rating-scale items always use rank-based tests. You can override the automatic choice; the report then records it as your decision.
+
+Directional hypotheses are tested two-sided by default and count as supported only if the effect is significant **and** in the stated direction. One-sided tests are available when the direction was planned in advance; confidence intervals stay two-sided.
 
 ## Validation
 
@@ -75,7 +92,7 @@ qc_run_hypothesis(list(id = "H1", text = "Satisfaction differs by gender",
                        spec = list(goal = "difference", outcome = "satisfaction", group = "gender")), ctx)
 ```
 
-See `examples/run_example.R`. Layout: `app/` (click app), `engine/` (reading, profiling, assumption screening, rules, charts, reports), `templates/` (one vetted R script per analysis), `validation/`, `examples/`, `workflows/` (step procedures).
+See `examples/run_example.R`. Layout: `app/` (click app), `engine/` (import, codebook, preparation, hypothesis breakdown, profiling, assumption screening, rules, charts, reports), `templates/` (one vetted R script per analysis), `validation/`, `examples/`, `workflows/` (step procedures).
 
 ## Academic use
 

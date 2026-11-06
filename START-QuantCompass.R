@@ -17,7 +17,7 @@ if (is.null(qc_here) || !file.exists(file.path(qc_here, "app", "app.R"))) {
 setwd(qc_here)
 
 # Install missing packages once (pre-built versions, no Rtools needed)
-qc_needed <- c("shiny", "bslib", "readxl", "ggplot2", "officer", "htmltools", "jsonlite")
+qc_needed <- c("shiny", "bslib", "readxl", "ggplot2", "officer", "htmltools", "jsonlite", "haven", "pdftools", "writexl", "xml2")
 qc_missing <- qc_needed[!vapply(qc_needed, requireNamespace, logical(1), quietly = TRUE)]
 if (length(qc_missing)) {
   message("First start: installing ", paste(qc_missing, collapse = ", "), " (one time only, a few minutes)...")

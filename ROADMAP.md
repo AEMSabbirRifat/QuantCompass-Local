@@ -7,6 +7,7 @@
 | 2 | Data intake: sheet picker with previews, readiness verdict, one-click fixes recorded in the script, codebook names | **Done (v0.2)** |
 | 3 | Click app: plain-language hypotheses (Option A), Excel hypothesis sheet (Option B), sentence confirmation, assumption screening -> parametric/non-parametric decision, override | **Done (v0.2)** |
 | 4 | Outputs: 8-section Word + HTML reports, APA tables, 300-dpi charts, appendix code, disclosure paragraph, whole-dataset description | **Done (v0.2)**; textbook-cited "Explain this" with formulas planned |
+| 4b | Survey intake: any data format and codebook format, codebook check, exclusions from survey rules, skip-logic check, scales, groups, final data gate; hypothesis breakdown from plain sentences; mediation; one-sided tests; methods section + Table 1 | **Done (v0.3)** |
 | 5 | Optional AI layer, bring your own key (Gemini, Mistral, Claude, OpenAI-compatible, Ollama); summaries only, never raw data; every AI-written number checked against R output | Planned |
 | 6 | Web version (same app via Shinylive on GitHub Pages); privacy note; pilot with volunteer students | Next |
 | 7 | Thesis-grade mode: report critic (APA checklist + number matching), independent verifier rules, AI voting only when rules are uncertain | Planned |
