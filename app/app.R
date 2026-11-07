@@ -564,7 +564,9 @@ server <- function(input, output, session) {
       uiOutput("ai_fields"), uiOutput("ai_status"),
       actionButton("ai_test", "Test the connection", class = "btn-outline-primary")) })
   output$ai_fields <- renderUI({ pv <- input$ai_provider %||% "gemini"; pr <- qc_ai_providers[[pv]]; cfg0 <- qc_ai_config(pv, env = ai_env)
-    tagList(textInput("ai_model", "Model (leave empty for the default)", "", placeholder = cfg0$model),
+    tagList(if (length(pr$models)) tagList(selectizeInput("ai_model", "Model", c(pr$models), selected = cfg0$model, options = list(create = TRUE)),
+        note("Recommended: llama-3.3-70b-instruct or qwen3-30b-a3b-instruct-2507. You can also type another model name. ", tags$a(href = pr$docs, target = "_blank", "Current model list")))
+      else textInput("ai_model", "Model (leave empty for the default)", "", placeholder = cfg0$model),
       if (!is.na(pr$key_env)) passwordInput("ai_key", "API key", "", placeholder = if (nzchar(cfg0$key)) "Using the key from your .env file" else "Paste your key (this session only)"),
       if (!is.null(pr$base_env)) textInput("ai_base", "Address of the service", "", placeholder = cfg0$base)) })
   output$ai_status <- renderUI({ if (!isTRUE(input$ai_on)) return(note("AI help is off."))
