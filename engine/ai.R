@@ -16,6 +16,14 @@ qc_ai_providers <- list(
   anthropic = list(label = "Anthropic Claude", key_env = "ANTHROPIC_API_KEY", base = "https://api.anthropic.com/v1", model = "claude-haiku-4-5", style = "anthropic"),
   openai_compatible = list(label = "OpenAI or OpenAI-compatible (e.g. a university AI gateway)", key_env = "OPENAI_COMPATIBLE_API_KEY", base_env = "OPENAI_COMPATIBLE_BASE_URL",
                            base = "https://api.openai.com/v1", model = "gpt-4o-mini", style = "openai"),
+  academiccloud = list(label = "GWDG Academic Cloud - Chat AI / SAIA (German universities)", key_env = "ACADEMICCLOUD_API_KEY", base_env = "ACADEMICCLOUD_BASE_URL",
+                       base = "https://chat-ai.academiccloud.de/v1", model = "llama-3.3-70b-instruct", style = "openai",
+                       # chat models as of March 2026 (embedding models left out); current list: https://docs.hpc.gwdg.de/services/chat-ai/models/index.html
+                       models = c("llama-3.3-70b-instruct", "qwen3-30b-a3b-instruct-2507", "mistral-large-3-675b-instruct-2512", "openai-gpt-oss-120b",
+                                  "qwen3-235b-a22b", "qwen3-32b", "glm-4.7", "gemma-3-27b-it", "apertus-70b-instruct-2509", "meta-llama-3.1-8b-instruct",
+                                  "devstral-2-123b-instruct-2512", "deepseek-r1-distill-llama-70b", "qwen3-30b-a3b-thinking-2507", "qwen3-coder-30b-a3b-instruct",
+                                  "medgemma-27b-it", "internvl3.5-30b-a3b", "qwen3-omni-30b-a3b-instruct", "qwen3-vl-30b-a3b-instruct", "teuken-7b-instruct-research"),
+                       docs = "https://docs.hpc.gwdg.de/services/chat-ai/models/index.html"),
   ollama = list(label = "Ollama (runs on your own computer, no key)", key_env = NA, base_env = "OLLAMA_BASE_URL", base = "http://localhost:11434", model = "llama3.1", style = "ollama"))
 
 # Read KEY=VALUE lines of a .env file (comments and quotes allowed). Returns a named list; nothing is exported.
@@ -85,6 +93,7 @@ qc_ai_chat <- function(cfg, system, user) {
 }
 
 qc_ai_json <- function(txt) {
+  txt <- gsub("(?s)<think>.*?</think>", "", txt, perl = TRUE)          # reasoning models may write their thinking first
   txt <- gsub("^```(?:json)?\\s*|\\s*```$", "", trimws(txt), perl = TRUE)
   s <- regexpr("\\{", txt); e <- max(gregexpr("\\}", txt)[[1]]); if (s < 0 || e < s) stop("The AI answer was not JSON.")
   jsonlite::fromJSON(substr(txt, s, e), simplifyVector = FALSE)
