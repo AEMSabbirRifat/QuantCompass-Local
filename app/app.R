@@ -18,7 +18,7 @@ locked_card <- function() card(h5("Confirm your final dataset first"), p("Analys
   actionButton("go_gate", "Go to step 3: Final data", class = "btn-primary"))
 
 brand <- tags$span(HTML(paste(readLines(file.path(root, "app", "www", "logo_inline.svg"), warn = FALSE), collapse = "")),
-  tags$span(tags$span(class = "qc-word", HTML("Quant<b>Compass</b>")), tags$span(class = "qc-tag", "From hypothesis to thesis-ready statistics")))
+  tags$span(tags$span(class = "qc-word", HTML("Quant<b>Compass</b>"))))
 
 ui <- navbarPage(
   title = brand, id = "nav", windowTitle = "QuantCompass",
@@ -139,7 +139,7 @@ server <- function(input, output, session) {
   observeEvent(input$lab_var, { updateTextInput(session, "lab_txt", value = if (!is.null(rv$labels[[input$lab_var]])) rv$labels[[input$lab_var]] else "")
     lv <- rv$level_labels[[input$lab_var]]; updateTextInput(session, "lab_levels", value = if (!is.null(lv)) paste(names(lv), "=", lv, collapse = "; ") else "") })
   observeEvent(input$lab_save, { v <- input$lab_var; l <- rv$labels; l[[v]] <- if (nzchar(input$lab_txt)) input$lab_txt else NULL; rv$labels <- l
-    ll <- rv$level_labels; ll[[v]] <- qc_parse_levels(input$lab_levels); rv$level_labels <- ll; showNotification(paste("Saved name for", v), type = "message") })
+    ll <- rv$level_labels; ll[v] <- list(if (nzchar(trimws(input$lab_levels))) qc_value_string(input$lab_levels) else NULL); rv$level_labels <- ll; showNotification(paste("Saved name for", v), type = "message") })
 
   # ======================================================================= 2. prepare
   id_var <- reactive({ req(rv$raw); qc_id_column(rv$raw) })
@@ -205,7 +205,8 @@ server <- function(input, output, session) {
         tags$li(tags$code(s$name), sprintf(" %s: %d item(s), %s%s%s", s$label, length(s$items), s$method, if (length(s$reverse)) paste0(", reversed: ", paste(s$reverse, collapse = ", ")) else "",
           if (!is.na(a$alpha)) sprintf(", alpha = %s%s", qc_fmt_r(a$alpha), if (a$alpha < .7) " (below .70)" else "") else ""),
           actionLink(paste0("sc_del_", i), "remove", onclick = sprintf("Shiny.setInputValue('sc_del', %d, {priority:'event'})", i))) }))),
-      if (length(sg)) tagList(tags$b("Suggested from the codebook"), lapply(seq_along(sg), function(i) { s <- sg[[i]]
+      if (length(sg) && any(vapply(sg, function(s) !(s$name %in% vapply(rv$scales, `[[`, "", "name") || all(s$items %in% unlist(lapply(rv$scales, `[[`, "items")))), logical(1))))
+        tagList(tags$b("Suggested from the codebook"), lapply(seq_along(sg), function(i) { s <- sg[[i]]
         if (s$name %in% vapply(rv$scales, `[[`, "", "name") || all(s$items %in% unlist(lapply(rv$scales, `[[`, "items")))) return(NULL)
         div(class = "sugg", tags$code(paste(s$items, collapse = ", ")), if (!is.na(s$preset)) span(class = "badge bg-info ms-1", "WHO-5 detected"),
           tags$details(tags$summary("Answer directions"), tags$ul(class = "small", lapply(s$anchors, tags$li))),
@@ -309,6 +310,8 @@ server <- function(input, output, session) {
   output$describe_ui <- renderUI({ if (!rv$locked) return(locked_card()); d <- fdata()
     cand <- names(d)[vapply(d, function(x) { u <- length(unique(stats::na.omit(x))); u >= 2 && u <= 12 }, logical(1))]
     t1 <- intersect(c(grep("^DM[0-9]", names(d), value = TRUE), vapply(rv$final$prep$scales, `[[`, "", "name")), names(d))
+    t1 <- t1[vapply(t1, function(v) { u <- length(unique(stats::na.omit(d[[v]]))); u >= 2 && (is.numeric(d[[v]]) || is.factor(d[[v]]) || u <= 12) }, logical(1))]   # no free-text or empty columns
+    if (!is.null(rv$cb)) t1 <- t1[!vapply(t1, function(v) { e <- rv$cb$vars[[v]]; !is.null(e) && identical(e$kind, "text") }, logical(1))]
     tagList(card(h5("Describe the final dataset"), note("Tables, charts and a ready-to-paste summary, plus Table 1 for your thesis."),
       fluidRow(column(6, selectInput("by", "Split numeric variables by group (optional)", c("No split" = "", named(cand, rv$labels)))),
         column(6, selectizeInput("t1vars", "Variables for Table 1 (sample characteristics)", named(names(d), rv$labels), selected = t1, multiple = TRUE))),
@@ -358,6 +361,7 @@ server <- function(input, output, session) {
         note("Each one: assumptions are screened, the test is run, and a Word + HTML report with charts and the exact R script is created."))),
     column(7, uiOutput("parts_ui"))) })
   read_hyp_lines <- function(txt) { ln <- trimws(strsplit(txt, "\n")[[1]]); ln <- ln[nzchar(ln)]
+    ln <- sub("^[*\u2022\u2013-]+\\s*", "", ln); ln <- gsub("(?<=^H[0-9])[\u2080-\u2089]+|(?<=^H[0-9][0-9])[\u2080-\u2089]+|(?<=^H[0-9][a-z])[\u2080-\u2089]+", "", ln, perl = TRUE)
     ids <- ifelse(grepl("^H[0-9]+[a-z]?\\s*[:.)-]", ln, ignore.case = TRUE), toupper(sub("^(H[0-9]+[a-z]?).*$", "\\1", ln, ignore.case = TRUE)), paste0("H", seq_along(ln)))
     ids <- sub("^H", "H", sub("([0-9])([A-Z])$", "\\1\\L\\2", ids, perl = TRUE)); stats::setNames(sub("^H[0-9]+[a-z]?\\s*[:.)-]\\s*", "", ln, ignore.case = TRUE), ids) }
   start_breakdown <- function(H) { qc_set_labels(ctx()); qc_dissect_scales$scales <- rv$final$prep$scales
@@ -405,7 +409,7 @@ server <- function(input, output, session) {
     allv <- named(cat0$variable, L); numv <- named(cat0$variable[cat0$kind %in% c("numeric", "ordinal", "binary")], L)
     grpv <- named(cat0$variable[lengths(cat0$levels) >= 2 & lengths(cat0$levels) <= 12], L)
     id <- function(f) paste0("pt", k, "_", f); val <- function(x) if (is.null(x) || all(is.na(x))) character(0) else x
-    dir_sel <- if (is.null(sp$direction) || is.na(sp$direction)) "none" else sp$direction
+    dir_sel <- if (is.null(sp[["direction"]]) || is.na(sp[["direction"]])) "none" else sp[["direction"]]
     body <- switch(sp$goal,
       relationship = tagList(fluidRow(column(6, selectInput(id("var1"), "First variable", allv, val(sp$var1))), column(6, selectInput(id("var2"), "Second variable", allv, val(sp$var2)))),
         selectInput(id("dir"), "Expected direction", c("No direction stated" = "none", "Positive" = "positive", "Negative" = "negative"), dir_sel)),
@@ -413,13 +417,19 @@ server <- function(input, output, session) {
           stats::setNames(k2, vapply(k2, function(z) qc_level_lab(sp$group, z), "")) } else character()
         tagList(fluidRow(column(6, selectInput(id("outcome"), "Outcome (measured)", numv, val(sp$outcome))), column(6, selectInput(id("group"), "Group variable", grpv, val(sp$group)))),
           selectizeInput(id("compare"), "Groups to compare (in order: group 1 first)", lv, selected = val(sp$compare), multiple = TRUE),
-          selectInput(id("higher"), "Which group is expected to be higher?", c("No direction stated" = "none", lv), if (is.null(sp$expect_higher)) "none" else sp$expect_higher)) },
+          selectInput(id("higher"), "Two groups: which one is expected to be higher?", c("No direction stated" = "none", lv), if (is.null(sp$expect_higher)) "none" else sp$expect_higher),
+          if (length(lv) > 2) tagList(
+            selectInput(id("trend"), "Three or more ordered groups: expected trend", c("No order stated" = "none", "Rises from the first to the last group" = "increasing", "Falls from the first to the last group" = "decreasing"), sp$trend %||% "none"),
+            fluidRow(column(8, selectInput(id("extreme"), "Group expected to be lowest or highest (optional)", c("None" = "", lv), sp$expect_extreme$level %||% "")),
+                     column(4, selectInput(id("extreme_which"), "which", c("lowest", "highest"), sp$expect_extreme$which %||% "lowest"))))) },
       mediation = tagList(fluidRow(column(4, selectInput(id("var1"), "Predictor (X)", numv, val(sp$var1))), column(4, selectInput(id("mediator"), "Mediator (M)", numv, val(sp$mediator))),
           column(4, selectInput(id("outcome"), "Outcome (Y)", numv, val(sp$outcome)))),
         selectInput(id("dir"), "Expected direction of the indirect effect", c("No direction stated" = "none", "Positive" = "positive", "Negative" = "negative"), dir_sel)),
       association = fluidRow(column(6, selectInput(id("var1"), "First category variable", grpv, val(sp$var1))), column(6, selectInput(id("var2"), "Second category variable", grpv, val(sp$var2)))),
       prediction = tagList(selectInput(id("outcome"), "Outcome (dependent variable)", numv, val(sp$outcome)), selectizeInput(id("preds"), "Predictors (independent variables)", allv, val(sp$predictors), multiple = TRUE),
-        if (!is.null(sp$outcome) && !is.na(sp$outcome) && length(sp$predictors)) { ck <- qc_mlr_check(d, sp$outcome, sp$predictors)
+        selectizeInput(id("controls"), "Control variables (optional; entered first, which makes it a hierarchical regression)", allv, val(sp$controls), multiple = TRUE),
+        textInput(id("dirs"), "Expected direction per predictor (optional)", value = if (length(sp$directions)) paste(names(sp$directions), sp$directions, collapse = ", ") else "", placeholder = "e.g. WUC negative, WUF positive"),
+        if (!is.null(sp$outcome) && !is.na(sp$outcome) && length(sp$predictors)) { ck <- qc_mlr_check(d, sp$outcome, c(sp$controls, sp$predictors))
           div(class = paste0("small mlr-", ck$status), ck$verdict) }),
       reliability = { scs <- Filter(function(s) length(s$items) >= 2, rv$final$prep$scales)
         tagList(if (length(scs)) selectInput(id("relscale"), "Use the items of a scale you built", c("(choose items yourself)" = "", stats::setNames(vapply(scs, `[[`, "", "name"), vapply(scs, function(s) lab_ui(s$name, rv$labels), ""))), ""),
@@ -430,18 +440,25 @@ server <- function(input, output, session) {
       checkboxInput(id("onesided"), "Test one-sided (only if the direction was planned before collecting the data)", value = !is.null(sp$alternative) && sp$alternative != "two.sided")) }
   spec_from_part <- function(k) { g <- function(f) input[[paste0("pt", k, "_", f)]]; goal <- g("goal"); sp <- list(goal = goal)
     nz <- function(x) if (is.null(x) || !length(x) || identical(x, "")) NA else x
-    if (goal == "relationship") { sp$var1 <- nz(g("var1")); sp$var2 <- nz(g("var2")); sp$direction <- if (identical(g("dir"), "none")) NA else g("dir") }
+    if (goal == "relationship") { sp$var1 <- nz(g("var1")); sp$var2 <- nz(g("var2")); sp[["direction"]] <- if (identical(g("dir"), "none")) NA else g("dir") }
     if (goal == "difference") { sp$outcome <- nz(g("outcome")); sp$group <- nz(g("group")); if (length(g("compare")) >= 2) sp$compare <- g("compare")
-      if (!is.null(g("higher")) && g("higher") != "none") sp$expect_higher <- g("higher") }
-    if (goal == "mediation") { sp$var1 <- nz(g("var1")); sp$mediator <- nz(g("mediator")); sp$outcome <- nz(g("outcome")); sp$direction <- if (identical(g("dir"), "none")) NA else g("dir") }
+      if (!is.null(g("higher")) && g("higher") != "none") sp$expect_higher <- g("higher")
+      if (isTRUE(g("trend") %in% c("increasing", "decreasing")) && length(g("compare")) != 2) sp$trend <- g("trend")
+      if (nzchar(g("extreme") %||% "") && length(g("compare")) != 2) sp$expect_extreme <- list(level = g("extreme"), which = g("extreme_which") %||% "lowest") }
+    if (goal == "mediation") { sp$var1 <- nz(g("var1")); sp$mediator <- nz(g("mediator")); sp$outcome <- nz(g("outcome")); sp[["direction"]] <- if (identical(g("dir"), "none")) NA else g("dir") }
     if (goal == "association") { sp$var1 <- nz(g("var1")); sp$var2 <- nz(g("var2")) }
-    if (goal == "prediction") { sp$outcome <- nz(g("outcome")); sp$predictors <- setdiff(g("preds"), sp$outcome) }
+    if (goal == "prediction") { sp$outcome <- nz(g("outcome")); sp$predictors <- setdiff(g("preds"), sp$outcome)
+      ctl <- setdiff(g("controls"), c(sp$outcome, sp$predictors)); if (length(ctl)) sp$controls <- ctl
+      dt <- trimws(strsplit(g("dirs") %||% "", "\\s*[,;]\\s*")[[1]]); dt <- dt[nzchar(dt)]
+      if (length(dt)) { v <- sub("\\s+.*$", "", dt); w <- tolower(sub("^\\S+\\s+", "", dt)); ok <- v %in% sp$predictors & w %in% c("negative", "positive")
+        if (any(!ok)) showNotification(sprintf("Directions not understood: %s (write e.g. 'WUC negative').", paste(dt[!ok], collapse = ", ")), type = "warning")
+        if (any(ok)) sp$directions <- stats::setNames(w[ok], v[ok]) } }
     if (goal == "reliability") { rs <- g("relscale"); sc <- Filter(function(s) identical(s$name, rs), rv$final$prep$scales)
       if (length(sc)) sp <- qc_reliability_spec(sc[[1]]) else { sp$items <- g("items"); sp$reverse <- intersect(g("reverse"), g("items")) } }
     st <- trimws(if (is.null(g("subset"))) "" else g("subset"))
     if (nzchar(st)) { cc <- qc_parse_condition_text(st, fdata()); if (!is.null(cc$error)) showNotification(cc$error, type = "error") else sp$subset <- list(cond = cc, label = st, text = st) }
     if (isTRUE(g("onesided"))) { s <- NA
-      if (goal %in% c("relationship") && !is.na(sp$direction)) s <- if (sp$direction == "positive") "greater" else "less"
+      if (goal %in% c("relationship") && !is.na(sp[["direction"]])) s <- if (sp[["direction"]] == "positive") "greater" else "less"
       if (goal == "difference" && !is.null(sp$expect_higher) && !is.null(sp$compare)) s <- if (sp$expect_higher == sp$compare[1]) "greater" else "less"
       if (!is.na(s)) sp$alternative <- s else showNotification("One-sided needs a stated direction (and, for groups, two groups to compare).", type = "warning") }
     sp }
