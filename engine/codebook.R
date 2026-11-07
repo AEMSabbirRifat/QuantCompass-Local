@@ -11,8 +11,8 @@
 #   pages  : data.frame(page, page_id)
 #   source : where it came from; problems : messages for the user
 
-qc_missing_label_re <- "(?i)^\\s*(not answered|no answer|missing|keine angabe|nicht beantwortet|refused|prefer not to say|n/?a - not answered)\\s*$"
-qc_na_like_re <- "(?i)(not applicable|does not apply|no grades yet|don.?t know|cannot say|k\\.?\\s?a\\.?|trifft nicht zu)"
+qc_missing_label_re <- "(?i)^\\s*(not answered|no answer|missing|keine angabe|nicht beantwortet|refused|n/?a - not answered|system missing)\\s*$"
+qc_na_like_re <- "(?i)(not applicable|does not apply|no grades yet|don.?t know|cannot say|prefer not to say|rather not say|k\\.?\\s?a\\.?|trifft nicht zu)"
 
 # Built-in descriptions of the system columns that survey tools add (not in user codebooks)
 qc_system_vars <- c(
@@ -34,6 +34,7 @@ qc_system_label <- function(v) if (v %in% names(qc_system_vars)) qc_system_vars[
 
 qc_cb_entry <- function(variable, label = NA_character_, values = NULL, page = NA_integer_, question = NA_character_, kind = NULL) {
   values <- if (is.null(values)) character() else values
+  values <- values[!is.na(names(values)) & nzchar(names(values)) & names(values) != "NA" & !is.na(values)]
   codes <- suppressWarnings(as.numeric(names(values)))
   miss <- names(values)[grepl(qc_missing_label_re, values, perl = TRUE)]
   valid <- values[!names(values) %in% miss]
@@ -327,14 +328,16 @@ qc_codebook_lss <- function(path) {
       problems <- c(problems, sprintf("%s is shown only if: %s (LimeSurvey condition, listed for you to check).", tag, qq$relevance))
     subs <- if (nrow(sq)) sq[sq$parent_qid == qq$qid, ] else if ("parent_qid" %in% names(q)) q[q$parent_qid == qq$qid, ] else data.frame()
     lab <- gsub("\\s+", " ", gsub("<[^>]+>", " ", qtext(qq$qid)))
-    if (nrow(subs)) for (s in seq_len(nrow(subs))) { v <- paste0(tag, "_", subs$title[s]); rows[[v]] <- list(variable = v, label = paste(lab, "-", gsub("<[^>]+>", "", qtext(subs$qid[s]))), values = vals) }
+    sqtext <- function(r) { if ("question" %in% names(r) && !is.na(r$question) && nzchar(r$question)) return(r$question)
+      if (nrow(l10)) { z <- l10$question[l10$qid == r$qid]; if (length(z)) return(z[1]) }; NA }
+    if (nrow(subs)) for (s in seq_len(nrow(subs))) { v <- paste0(tag, "_", subs$title[s]); rows[[v]] <- list(variable = v, label = paste(lab, "-", gsub("<[^>]+>", "", sqtext(subs[s, , drop = FALSE]))), values = vals) }
     else rows[[tag]] <- list(variable = tag, label = lab, values = vals)
   }
   qc_codebook_from_list(rows, source = paste("LimeSurvey structure file", basename(path)), problems = unique(problems))
 }
 
 # ---------------------------------------------------------------- dispatcher
-qc_read_any_codebook <- function(path, data = NULL) {
+qc_read_any_codebook_legacy <- function(path, data = NULL) {
   ext <- tolower(tools::file_ext(path)); known <- if (!is.null(data)) names(data) else NULL
   src <- basename(path)
   cb <- tryCatch(switch(ext,

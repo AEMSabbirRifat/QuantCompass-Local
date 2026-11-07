@@ -224,6 +224,13 @@ qc_assumption_figures <- function(data, spec, screen) {
     d <- qc_complete(data, s$items)$data
     return(list(qc_plot_hist_grid(d, s$items)))
   }
+  if (id == "moderation") {
+    d <- qc_complete(data, c(s$var1, s$moderator, s$outcome))$data; w <- d[[s$moderator]]
+    w <- if (is.factor(w) || is.character(w) || length(unique(w)) <= 2) factor(w) else as.numeric(w) - mean(as.numeric(w))
+    dd <- data.frame(y = as.numeric(d[[s$outcome]]), xc = as.numeric(d[[s$var1]]) - mean(as.numeric(d[[s$var1]])), w = w)
+    m <- stats::lm(y ~ xc * w, data = dd)
+    return(c(qc_plot_normality(stats::residuals(m), NULL, "residuals of the interaction model"), qc_plot_residuals(m)))
+  }
   list()
 }
 
@@ -255,7 +262,30 @@ qc_result_figures <- function(data, spec, screen, result) {
   if (id == "regression_logistic") return(list(qc_plot_or(result$coefficients, qc_lab(s$outcome))))
   if (id == "reliability_alpha") return(list(qc_plot_items(result$items)))
   if (id == "mediation") return(list(qc_plot_mediation(result, s), qc_plot_boot(result)))
+  if (id == "moderation") return(list(qc_plot_slopes(data, s, result)))
   list()
+}
+
+# Simple slopes: predicted outcome across the range of the predictor, one line per moderator value or group
+qc_plot_slopes <- function(data, s, r) {
+  d <- qc_complete(data, c(s$var1, s$moderator, s$outcome))$data
+  x <- as.numeric(d[[s$var1]]); y <- as.numeric(d[[s$outcome]]); cf <- r$coefficients$b; names(cf) <- rownames(r$coefficients)
+  xs <- seq(min(x), max(x), length.out = 50); xc <- xs - mean(x)
+  sl <- r$slopes; lines <- list()
+  for (i in seq_len(nrow(sl))) {
+    if (isTRUE(r$w_categorical)) { l <- as.character(sl$level[i]); add <- function(nm) if (nm %in% names(cf)) cf[[nm]] else 0
+      yhat <- cf[["(Intercept)"]] + add(paste0("w", l)) + (cf[["xc"]] + add(paste0("xc:w", l))) * xc }
+    else { wv <- sl$w_value[i] - r$w_mean; yhat <- cf[["(Intercept)"]] + cf[["wc"]] * wv + (cf[["xc"]] + cf[["xc:wc"]] * wv) * xc }
+    lines[[i]] <- data.frame(x = xs, y = yhat, at = sl$at[i]) }
+  ld <- do.call(rbind, lines); ld$at <- factor(ld$at, levels = sl$at)
+  pts <- data.frame(x = x, y = y)
+  pal <- qc_col$cat[seq_len(nrow(sl))]
+  p <- ggplot2::ggplot() + ggplot2::geom_point(data = pts, ggplot2::aes(x, y), colour = qc_col$grid, alpha = .6, size = 1.2) +
+    ggplot2::geom_line(data = ld, ggplot2::aes(x, y, colour = at, linetype = at), linewidth = 1) +
+    ggplot2::scale_colour_manual(values = pal, name = qc_lab(s$moderator)) + ggplot2::scale_linetype_discrete(name = qc_lab(s$moderator)) +
+    ggplot2::labs(title = sprintf("Effect of %s on %s at different values of %s", qc_lab(s$var1), qc_lab(s$outcome), qc_lab(s$moderator)), x = qc_lab(s$var1), y = qc_lab(s$outcome)) + qc_theme()
+  qc_fig(p, sprintf("Simple slopes: predicted %s across %s for %s. Lines that are not parallel show moderation; the interaction test says whether the difference in slopes is statistically significant.",
+                    qc_lab(s$outcome), qc_lab(s$var1), if (isTRUE(r$w_categorical)) sprintf("each group of %s", qc_lab(s$moderator)) else sprintf("low (-1 SD), average and high (+1 SD) %s", qc_lab(s$moderator))))
 }
 
 # Path diagram of a simple mediation model with the estimated paths

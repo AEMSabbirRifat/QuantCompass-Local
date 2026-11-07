@@ -18,6 +18,7 @@ qc_rule_refs <- list(
   welch_f  = "Delacre et al. (2019), International Review of Social Psychology, 32(1)",
   cochran  = "Cochran (1954), Biometrics, 10(4)",
   hc3      = "Long & Ervin (2000), The American Statistician, 54(3)",
+  aiken    = "Aiken & West (1991), Multiple Regression: Testing and Interpreting Interactions",
   vif      = "Hair et al. (2019), Multivariate Data Analysis (8th ed.)",
   cook     = "Cook & Weisberg (1982), Residuals and Influence in Regression",
   peduzzi  = "Peduzzi et al. (1996), Journal of Clinical Epidemiology, 49(12)",
@@ -106,6 +107,7 @@ qc_screen <- function(data, spec) {
     prediction = qc_screen_prediction(data, spec),
     reliability = qc_screen_reliability(data, spec),
     mediation = qc_screen_mediation(data, spec),
+    moderation = qc_screen_moderation(data, spec),
     describe = list(checks = qc_check_row("Not needed", "-", "-", TRUE, "Descriptive statistics make no assumptions."),
                     decision = qc_decision("descriptives", "descriptive", "Descriptive statistics were requested.", character())),
     stop("Unknown goal"))
@@ -278,4 +280,34 @@ qc_screen_mediation <- function(data, spec) {
     if (robust) "Because residual variance was not constant in at least one model, the individual path tests use HC3 robust standard errors."
     else "Residual variance was constant, so ordinary standard errors were used for the path tests.")
   list(checks = checks, decision = qc_decision("mediation", "regression-based (bootstrap)", reason, c("hayes", "preacher", "hc3", "vif", "cook")), robust = robust)
+}
+
+# Moderation: the interaction model is screened like any regression (linearity, residual normality,
+# constant variance, multicollinearity of the centred terms, influential cases).
+qc_screen_moderation <- function(data, spec) {
+  vs <- c(spec$var1, spec$moderator, spec$outcome); d0 <- qc_complete(data, vs)$data
+  w <- d0[[spec$moderator]]; wcat <- is.factor(w) || is.character(w) || length(unique(w)) <= 2
+  d <- data.frame(y = as.numeric(d0[[spec$outcome]]), xc = as.numeric(d0[[spec$var1]]) - mean(as.numeric(d0[[spec$var1]])))
+  if (wcat) d$w <- factor(w) else d$w <- as.numeric(w) - mean(as.numeric(w))
+  m <- stats::lm(y ~ xc * w, data = d); n <- nrow(d); X <- stats::model.matrix(m)[, -1, drop = FALSE]
+  res <- stats::residuals(m); fit <- stats::fitted(m)
+  bp <- summary(stats::lm(res^2 ~ X)); bp_p <- stats::pchisq(n * bp$r.squared, ncol(X), lower.tail = FALSE)
+  reset <- stats::anova(m, stats::update(m, . ~ . + I(fit^2)))$`Pr(>F)`[2]
+  vif <- if (ncol(X) > 1) sapply(seq_len(ncol(X)), function(j) 1 / (1 - summary(stats::lm(X[, j] ~ X[, -j]))$r.squared)) else 1
+  cook <- stats::cooks.distance(m); n_inf <- sum(cook > 4 / n)
+  checks <- rbind(
+    qc_check_row("Linearity", "RESET-type test (fitted^2 term)", sprintf("p %s", qc_fmt_p(reset)), reset >= .05,
+      if (reset >= .05) "No evidence of a curved relationship." else "There is some curvature; consider transforming a predictor."),
+    qc_normality_check(res, "residuals"),
+    qc_check_row("Constant variance (homoscedasticity)", "Breusch-Pagan (Koenker)", sprintf("p %s", qc_fmt_p(bp_p)), bp_p >= .05,
+      if (bp_p >= .05) "Residual spread is constant." else "Residual spread is not constant; robust (HC3) tests are reported."),
+    qc_check_row("Multicollinearity", "VIF of centred terms (< 5)", sprintf("max VIF = %s", qc_fmt(max(vif))), max(vif) < 5,
+      if (max(vif) < 5) "Centring keeps the product term from overlapping with the main effects." else "Terms overlap strongly; interpret the individual coefficients with care."),
+    qc_check_row("Influential cases", "Cook's distance > 4/n", sprintf("%d case(s)", n_inf), n_inf <= max(1, .05 * n),
+      if (n_inf <= max(1, .05 * n)) "No unusual concentration of influential cases." else "Several influential cases; check them for data errors."))
+  robust <- bp_p < .05
+  reason <- paste("The hypothesis states that the effect of one variable depends on another, so a moderation analysis (regression with an interaction term, Hayes, 2022, model 1) was used. The predictor and a numeric moderator were mean-centred.",
+    if (robust) "Because residual variance was not constant, the interaction and simple slopes are tested with HC3 robust standard errors."
+    else "Residual variance was constant, so ordinary standard errors were used.")
+  list(checks = checks, decision = qc_decision("moderation", "regression-based (interaction)", reason, c("hayes", "aiken", "hc3", "vif", "cook")), robust = robust)
 }

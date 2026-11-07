@@ -20,6 +20,12 @@ qc_hyp_data_lines <- function(spec) {
     lab <- if (is.null(spec$subset$label)) cond else spec$subset$label
     out <- c(out, sprintf("data <- data[(%s) %%in%% TRUE, , drop = FALSE]   # this hypothesis: %s", cond, lab)); desc <- c(desc, lab)
   }
+  if (spec$goal %in% c("prediction", "moderation") && exists("qc_nominal_coded")) {
+    ll <- if (exists("qc_level_labels", envir = globalenv())) get("qc_level_labels", envir = globalenv()) else list()
+    nom <- Filter(function(v) length(ll[[v]]) >= 3 && !qc_ordered_labels(ll[[v]]), qc_model_vars(spec))
+    for (v in nom) out <- c(out, sprintf('data[["%s"]] <- factor(data[["%s"]])   # coded categories without an order -> dummy variables', v, v))
+    if (length(nom)) desc <- c(desc, sprintf("%s entered as categories", qc_and(vapply(nom, qc_lab, ""))))
+  }
   if (!is.null(spec$compare) && !is.null(spec$group)) {
     g <- spec$group; lv <- spec$compare; num <- suppressWarnings(as.numeric(lv))
     vec <- if (!anyNA(num)) qc_vec(num) else qc_vec(lv)
@@ -71,12 +77,13 @@ qc_run_hypothesis <- function(h, ctx) {
   script_file <- file.path(hdir, paste0(h$id, "_script.R")); writeLines(out$script, script_file)
   tables <- qc_result_tables(id, r); paragraph <- paste(qc_paste_paragraph(h, screen, r), sub("^Decision: ", "", dec$text))
   explanation <- qc_explain(id, r, eff)
-  vars <- unique(c(eff$var1, eff$mediator, eff$outcome, eff$group, eff$var2, eff$controls, eff$predictors, eff$items))
+  vars <- unique(c(eff$var1, eff$mediator, eff$moderator, eff$outcome, eff$group, eff$var2, eff$controls, eff$predictors, eff$items))
   sections <- list(
     list(heading = "Hypotheses", items = list(list(type = "list", items = c(
       sprintf("Your hypothesis (as entered): %s", sub("\\.?$", ".", h$text)),
       sprintf("Research hypothesis (%s): %s", pair$lab1, pair$h1),
-      sprintf("Null hypothesis (%s): %s", pair$lab0, pair$h0), pair$note)))),
+      sprintf("Null hypothesis (%s): %s", pair$lab0, pair$h0), pair$note,
+      if (!is.null(h$ai)) sprintf("AI disclosure: the assignment of this hypothesis to variables was suggested by an AI system (%s), checked against the dataset and confirmed by the user. All statistics were computed in R.", h$ai))))),
     list(heading = "1. Data used", items = list(
       list(type = "p", text = h$sentence),
       list(type = "list", items = c(sprintf("File: %s%s", basename(ctx$path), if (!is.null(ctx$sheet)) paste0(" (sheet: ", ctx$sheet, ")") else ""),
@@ -273,6 +280,7 @@ qc_methods_text <- function(prep, flow_counts, scales_summary, results, codebook
   ids <- unique(unlist(lapply(Filter(function(x) !isTRUE(x$blocked), results), `[[`, "test")))
   p4 <- paste("Before each test, its assumptions were screened with fixed rules: normality by Shapiro-Wilk below n = 50, skewness and kurtosis z-scores (|z| <= 3.29) for n = 50-300 and absolute skewness (<= 2) and kurtosis (<= 7) above 300 (Kim, 2013); extreme outliers beyond 3 x IQR (Tukey, 1977); equality of variances with the Brown-Forsythe test.",
     "Group means were compared with Welch's tests, which do not assume equal variances (Delacre et al., 2017); rank-based tests were used for ordinal outcomes or when normality failed in small groups. Correlations used Pearson's r for linear, normally distributed variables and Spearman's rho otherwise.",
+    if (any(grepl("Moderation", ids))) "Moderation hypotheses were tested with regression models that include the product of the mean-centred predictor and moderator (Hayes, 2022, model 1; Aiken & West, 1991); simple slopes were estimated at one standard deviation below the mean, at the mean and one standard deviation above the mean of a numeric moderator, or in each group of a categorical moderator." else "",
     if (any(grepl("Mediation", ids))) "The mediation hypothesis was tested with a regression-based simple mediation model and a percentile bootstrap confidence interval (5,000 resamples) for the indirect effect (Hayes, 2022)." else "",
     sprintf("The tests used were: %s. The significance level was alpha = .05; tests were two-sided unless a direction was stated in advance.", qc_and(ids)),
     sprintf("All analyses were run in %s with QuantCompass; the full R scripts are provided.", R.version.string))

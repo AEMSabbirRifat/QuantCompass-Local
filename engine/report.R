@@ -51,6 +51,7 @@ qc_sentence <- function(spec, data) {
     reliability = sprintf("We will check whether the %d items (%s) form a reliable scale%s.", length(spec$items),
                           qc_and(spec$items), if (length(spec$reverse)) paste0(", with ", qc_and(spec$reverse), " reverse-coded") else ""),
     mediation = sprintf("We will test whether %s mediates the relationship between %s and %s.", L(spec$mediator), L(spec$var1), L(spec$outcome)),
+    moderation = sprintf("We will test whether %s moderates the relationship between %s and %s (an interaction %s x %s).", L(spec$moderator), L(spec$var1), L(spec$outcome), L(spec$var1), L(spec$moderator)),
     describe = "We will describe the selected variables.")
 }
 
@@ -134,6 +135,12 @@ qc_result_tables <- function(id, r) {
            qc_tab("Indirect effect", data.frame(Effect = "Indirect effect (a x b)", Estimate = f(r$ab, 3), `95% bootstrap CI` = sprintf("[%s, %s]", f(r$ab_ci[1], 3), f(r$ab_ci[2], 3)),
              `Standardised` = f(r$ab_cs, 3), `Share of total effect` = if (is.na(r$prop_mediated)) "-" else sprintf("%.0f%%", 100 * r$prop_mediated), N = r$n_used, check.names = FALSE),
              note = sprintf("Percentile bootstrap with %s resamples (seed 2026).", format(r$boot, big.mark = ",")))) },
+    moderation = { cf <- r$coefficients; sl <- r$slopes
+      list(qc_tab("Regression with the interaction term", data.frame(Term = cf$label, b = f(cf$b), SE = f(cf$se), `95% CI` = sprintf("[%s, %s]", f(cf$ci_low), f(cf$ci_high)), t = f(cf$t), p = sapply(cf$p, fp), check.names = FALSE),
+             note = paste(sprintf("Interaction: %s; Delta R-squared = %s; R-squared = %s; N = %d.", if (r$df1 == 1) sprintf("F(1, %d) = %s, p %s", r$df2, f(r$F_int), qc_fmt_p(r$p)) else sprintf("F(%d, %d) = %s, p %s", r$df1, r$df2, f(r$F_int), qc_fmt_p(r$p)), fr(r$delta_r2, 3), fr(r$r2), r$n_used),
+                          if (isTRUE(r$robust)) "SE, t and p use HC3 heteroscedasticity-robust estimates." else "")),
+           qc_tab("Simple slopes (effect of the predictor at values of the moderator)", data.frame(`Moderator value` = if (isTRUE(r$w_categorical)) sl$at else sprintf("%s (%s)", sl$at, f(sl$w_value)),
+             b = f(sl$slope), SE = f(sl$se), `95% CI` = sprintf("[%s, %s]", f(sl$ci_low), f(sl$ci_high)), t = f(sl$t), p = sapply(sl$p, fp), check.names = FALSE))) },
     list())
 }
 
@@ -181,6 +188,11 @@ qc_explain <- function(id, r, s) {
                         qc_lab(s$var1), qc_lab(s$outcome), qc_lab(s$mediator), qc_lab(s$outcome), qc_fmt(r$ab, 3), qc_fmt(r$ab_ci[1], 3), qc_fmt(r$ab_ci[2], 3),
                         if (r$excludes_zero) "does not include zero, so the indirect effect is statistically significant" else "includes zero, so there is not enough evidence of an indirect effect",
                         qc_fmt(r$c_prime), qc_lab(s$mediator)),
+    moderation = { sl <- r$slopes
+      sprintf("A moderation analysis asks whether the link between %s and %s changes depending on %s. The interaction term tests this: %s The simple slopes show the effect of %s at different values of %s (%s). With survey data collected at one time point, this shows when the link is stronger or weaker, not proof of cause and effect.",
+        qc_lab(s$var1), qc_lab(s$outcome), qc_lab(s$moderator),
+        if (r$p < .05) sprintf("it is statistically significant (p %s), so the strength of the link depends on %s.", qc_fmt_p(r$p), qc_lab(s$moderator)) else sprintf("it is not statistically significant (p %s), so there is not enough evidence that the link depends on %s.", qc_fmt_p(r$p), qc_lab(s$moderator)),
+        qc_lab(s$var1), qc_lab(s$moderator), paste(sprintf("%s: b = %s", sub("^(.)", "\\L\\1", sl$at, perl = TRUE), qc_fmt(sl$slope)), collapse = "; ")) },
     "")
 }
 
@@ -327,8 +339,22 @@ qc_hypothesis_pair <- function(spec, data, hid = "H1") {
                   note = if (!is.null(spec$expect_extreme)) sprintf("Tested two-sided at alpha = .05 (all groups at once). The expectation that '%s' has the %s value is checked with the post-hoc comparisons and group means in the report.",
                                                                     qc_group_name(spec$group, spec$expect_extreme$level), spec$expect_extreme$which) else NULL)
     },
-    paired_difference = list(h1 = sprintf("Scores differ between %s and %s.", L(spec$var1), L(spec$var2)),
-                             h0 = sprintf("There is no difference between %s and %s.", L(spec$var1), L(spec$var2))),
+    paired_difference = if (!is.na(hi) && hi %in% c(spec$var1, spec$var2)) { lo <- setdiff(c(spec$var1, spec$var2), hi)
+        expect_sign <- if (hi == spec$var1) 1 else -1; expect_text <- sprintf("higher values for %s", L(hi))
+        list(h1 = sprintf("Values are higher for %s than for %s.", L(hi), L(lo)),
+             h0 = if (one_sided) sprintf("Values are not higher for %s than for %s.", L(hi), L(lo)) else sprintf("There is no difference between %s and %s.", L(spec$var1), L(spec$var2)))
+      } else list(h1 = sprintf("Scores differ between %s and %s.", L(spec$var1), L(spec$var2)),
+                  h0 = sprintf("There is no difference between %s and %s.", L(spec$var1), L(spec$var2))),
+    moderation = { st <- spec$stronger; stxt <- NULL
+      if (!is.null(st$at)) stxt <- sprintf("the link between %s and %s is stronger at %s values of %s", L(spec$var1), L(spec$outcome), st$at, L(spec$moderator))
+      if (!is.null(st$level)) stxt <- sprintf("the link between %s and %s is stronger for %s", L(spec$var1), L(spec$outcome), qc_group_name(spec$moderator, st$level))
+      if (!is.null(st$weaker_level)) stxt <- sprintf("the link between %s and %s is weaker for %s", L(spec$var1), L(spec$outcome), qc_group_name(spec$moderator, st$weaker_level))
+      if (!is.null(stxt)) expect_text <- stxt
+      list(h1 = sprintf("%s moderates the relationship between %s and %s: the effect of %s depends on %s (the interaction is not zero)%s.", L(spec$moderator), L(spec$var1), L(spec$outcome), L(spec$var1), L(spec$moderator),
+                        if (!is.null(stxt)) paste0("; ", stxt) else ""),
+           h0 = sprintf("%s does not moderate the relationship between %s and %s (the interaction is zero).", L(spec$moderator), L(spec$var1), L(spec$outcome)),
+           note = paste("Judged by the test of the interaction term (two-sided, alpha = .05); the simple slopes show the effect at different values of the moderator.",
+                        if (!is.null(stxt)) sprintf("The research hypothesis counts as fully supported only if the interaction is significant and %s.", stxt) else "")) },
     relationship = if (!is.na(dir)) { expect_sign <- if (dir == "positive") 1 else -1; expect_text <- paste("a", dir, "relationship")
         list(h1 = sprintf("%s is %sly related to %s (the correlation is %s zero).", L(spec$var1), dir, L(spec$var2), if (dir == "positive") "above" else "below"),
              h0 = if (one_sided) sprintf("%s is not %sly related to %s (the correlation is zero or %s).", L(spec$var1), dir, L(spec$var2), if (dir == "positive") "negative" else "positive")
@@ -363,6 +389,7 @@ qc_hypothesis_pair <- function(spec, data, hid = "H1") {
     if (length(dd)) { p$pred_dirs <- dd
       p$note <- paste(p$note, "The research hypothesis counts as fully supported only if each predictor with a stated direction is also significant in that direction.") } }
   p$lab1 <- hid; p$lab0 <- paste0("H0", sub("^H", "", hid)); p$expect_sign <- expect_sign; p$expect_text <- expect_text
+  if (spec$goal == "moderation") p$stronger <- spec$stronger
   if (!is.null(spec$expect_extreme)) p$expect_extreme <- c(spec$expect_extreme, group = spec$group)
   p
 }
@@ -370,7 +397,7 @@ qc_hypothesis_pair <- function(spec, data, hid = "H1") {
 # Sign of the observed effect (+1 / -1) for tests where a direction can be stated
 qc_effect_sign <- function(id, r) {
   e <- switch(id, correlation_pearson = r$r, correlation_spearman = r$rho, ttest_independent = r$mean_diff,
-              mann_whitney = r$rank_biserial, mediation = r$ab, NA)
+              mann_whitney = r$rank_biserial, mediation = r$ab, ttest_paired = r$mean_diff, wilcoxon_signed = r$rank_biserial, NA)
   if (is.null(e) || is.na(e)) NA else sign(e)
 }
 
@@ -404,6 +431,22 @@ qc_decision_core <- function(id, r, pair) {
     if (!is.na(es) && sign(r$ab) != es) return(wrong_way(sprintf("the indirect effect is significant (ab = %s, %s)", qc_fmt(r$ab, 3), ci)))
     return(list(rejected = TRUE, short = sprintf("%s rejected - %s supported", pair$lab0, pair$lab1),
       text = sprintf("Decision: %s is rejected. The interval of the indirect effect (ab = %s, %s) does not include zero. The data support %s: %s", pair$lab0, qc_fmt(r$ab, 3), ci, pair$lab1, pair$h1)))
+  }
+  if (id == "moderation") {
+    p <- r$p; st <- pair$stronger; sl <- r$slopes
+    if (p >= .05) return(list(rejected = FALSE, short = sprintf("%s not rejected", pair$lab0),
+      text = sprintf("Decision: %s is not rejected. The interaction is not statistically significant (p %s), so the data do not provide enough evidence that the effect depends on the moderator. Not rejecting %s does not prove that it is true.", pair$lab0, qc_fmt_p(p), pair$lab0)))
+    ok <- NA
+    if (!is.null(st$at) && !isTRUE(r$w_categorical)) { lo <- abs(sl$slope[sl$level == "low"]); hi <- abs(sl$slope[sl$level == "high"]); ok <- if (st$at == "high") hi > lo else lo > hi }
+    if (isTRUE(r$w_categorical) && (!is.null(st$level) || !is.null(st$weaker_level))) { lv <- if (!is.null(st$level)) st$level else st$weaker_level
+      a <- abs(sl$slope[as.character(sl$level) == as.character(lv)]); o <- abs(sl$slope[as.character(sl$level) != as.character(lv)])
+      if (length(a) && length(o)) ok <- if (!is.null(st$level)) a > max(o) else a < min(o) }
+    stab <- paste(sprintf("%s b = %s", sub("^(.)", "\\L\\1", sl$at, perl = TRUE), qc_fmt(sl$slope)), collapse = "; ")
+    if (isFALSE(ok)) return(list(rejected = FALSE, short = sprintf("%s not supported (opposite pattern)", pair$lab1),
+      text = sprintf("Decision: the interaction is statistically significant (p %s), but the pattern is the opposite of what %s expected (%s). Simple slopes: %s. %s is therefore not supported.", qc_fmt_p(p), pair$lab1, pair$expect_text, stab, pair$lab1)))
+    return(list(rejected = TRUE, short = sprintf("%s rejected - %s supported", pair$lab0, pair$lab1),
+      text = sprintf("Decision: %s is rejected. The interaction is statistically significant (p %s)%s. Simple slopes: %s. The data support %s: %s", pair$lab0, qc_fmt_p(p),
+                     if (isTRUE(ok)) " and the pattern is as expected" else "", stab, pair$lab1, pair$h1)))
   }
   p <- r[["p"]]
   if (is.null(p) || is.na(p)) return(list(rejected = NA, short = "No decision", text = "Decision: no significance test was performed."))

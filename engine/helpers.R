@@ -1,4 +1,5 @@
 # ---- QuantCompass helpers (copied into every script so it runs on its own) ----
+if (!exists("%||%", mode = "function")) `%||%` <- function(a, b) if (is.null(a)) b else a
 qc_fmt   <- function(x, d = 2) formatC(x, format = "f", digits = d)
 qc_fmt_p <- function(p) {
   if (is.na(p)) return("= NA")
@@ -25,7 +26,7 @@ qc_shapiro <- function(y) {
     list(W = unname(s$statistic), p = s$p.value)
   } else list(W = NA, p = NA)
 }
-qc_session <- function() list(engine = "QuantCompass engine 0.3.0",
+qc_session <- function() list(engine = "QuantCompass engine 0.4.0",
                               r_version = R.version.string, date = format(Sys.Date()))
 # Friendly names for variables and categories (set by QuantCompass; empty = use column names)
 qc_lab <- function(v) {
@@ -53,4 +54,10 @@ qc_type_convert <- function(d) {
 # Cronbach's alpha for a matrix of complete item answers
 qc_alpha <- function(m) { m <- as.matrix(m); k <- ncol(m); (k / (k - 1)) * (1 - sum(apply(m, 2, stats::var)) / stats::var(rowSums(m))) }
 qc_cap_first <- function(x) paste0(toupper(substr(x, 1, 1)), substring(x, 2))
+# Numbers written with a decimal comma ("7,5") become numbers; text columns are left alone
+qc_decimal_comma <- function(d) {
+  d[] <- lapply(d, function(x) { v <- x[!is.na(x) & nzchar(x)]
+    if (length(v) && all(grepl("^-?[0-9]+(,[0-9]+)?$", v))) gsub(",", ".", x, fixed = TRUE) else x })
+  d
+}
 # ---- end of helpers ----

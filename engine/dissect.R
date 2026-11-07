@@ -36,6 +36,8 @@ qc_concept_map <- list(
   age = c("age", "old", "older", "younger"), gender = c("gender", "sex"), absent = c("no", "without", "none", "non"),
   hours = c("hours", "hour", "weekly"),
   satisfaction = c("satisfaction", "satisfied", "dissatisfied"),
+  male = c("male", "males", "man", "men", "boy", "boys", "masculine"), female = c("female", "females", "woman", "women", "girl", "girls", "feminine"),
+  lonely = c("lonely", "loneliness", "lonelier", "isolated", "isolation"),
   low = c("low", "lower", "little", "less"), high = c("high", "higher", "more", "greater"))
 qc_concept_of <- local({ m <- character(); for (k in names(qc_concept_map)) m[qc_concept_map[[k]]] <- k; m })
 qc_stopwords <- c("the", "a", "an", "of", "in", "on", "is", "are", "be", "been", "being", "with", "and", "or", "students", "student",
@@ -44,7 +46,8 @@ qc_stopwords <- c("the", "a", "an", "of", "in", "on", "is", "are", "be", "been",
   "associated", "correlated", "related", "relationship", "association", "correlation", "between", "among", "international",
   "germany", "currently", "current", "s", "e", "g", "how", "you", "your", "please", "indicate", "following", "what", "would", "describe",
   "level", "total", "general", "personal", "holding", "hold", "having", "experience", "experienced", "such", "but", "who", "report", "reports",
-  "perceived", "significant", "statistically", "expected", "both", "also", "from", "into", "than", "over", "among", "group", "groups")
+  "perceived", "significant", "statistically", "expected", "both", "also", "from", "into", "than", "over", "among", "group", "groups",
+  "participants", "participant", "respondents", "respondent", "people", "individuals", "persons", "employees", "employee", "levels", "score", "scores", "mean")
 
 qc_concepts <- function(x, keep_level_words = FALSE) {
   tok <- strsplit(qc_norm_text(x), " ", fixed = TRUE)[[1]]
@@ -71,16 +74,30 @@ qc_catalog <- function(data, labels = list(), level_labels = list(), cb = NULL, 
     lab <- if (!is.null(labels[[v]])) labels[[v]] else if (!is.null(e) && !is.na(e$label)) e$label else v
     q <- if (!is.null(e) && !is.na(e$question)) e$question else ""
     lv <- if (is.factor(x)) stats::setNames(levels(x), levels(x)) else if (!is.null(level_labels[[v]])) level_labels[[v]] else if (kind %in% c("binary", "categorical")) stats::setNames(as.character(sort(unique(nn))), sort(unique(nn))) else character()
+    # coded answers without an order (gender 1/2/3, region 1-4) are categories, not numbers
+    if (kind == "ordinal" && length(lv) >= 3 && !qc_ordered_labels(lv)) kind <- "categorical"
     data.frame(variable = v, label = lab, question = q, kind = kind, source = src, n = length(nn),
                levels = I(list(lv)), stringsAsFactors = FALSE)
   })
   do.call(rbind, rows[!vapply(rows, is.null, logical(1))])
 }
 
+# Two words share a stem when they start with the same 5+ letters covering most of the shorter word
+# (lonely / loneliness, intend / intention, satisfied / satisfaction, sleep / sleeping)
+qc_stem <- function(w) { for (suf in c("ings", "ing", "ers", "er", "ed", "ness", "ions", "ion", "ity", "ive", "ies", "es", "s")) if (nchar(w) - nchar(suf) >= 4 && endsWith(w, suf)) return(substr(w, 1, nchar(w) - nchar(suf))); w }
+qc_stem_hit <- function(a, b) {
+  if (!length(b)) return(rep(FALSE, length(a)))
+  sb <- vapply(b, qc_stem, "")
+  vapply(a, function(w) { if (nchar(w) >= 5 && qc_stem(w) %in% sb[nchar(sb) >= 4]) return(TRUE); if (nchar(w) < 5) return(FALSE)
+    any(vapply(b, function(z) { if (nchar(z) < 5) return(FALSE); k <- 0; m <- min(nchar(w), nchar(z))
+      while (k < m && substr(w, k + 1, k + 1) == substr(z, k + 1, k + 1)) k <- k + 1
+      k >= 5 && k >= .6 * m }, logical(1))) }, logical(1))
+}
 qc_match_score <- function(phrase, label, question = "", name = "") {
   pc <- qc_concepts(phrase); if (!length(pc)) return(0)
   lc <- c(qc_concepts(label), qc_concepts(gsub("_", " ", name))); qcn <- qc_concepts(question)
-  sum(ifelse(pc %in% lc, 1, ifelse(pc %in% qcn, .6, 0))) / length(pc)
+  hit <- ifelse(pc %in% lc, 1, ifelse(qc_stem_hit(pc, lc), .85, ifelse(pc %in% qcn, .6, ifelse(qc_stem_hit(pc, qcn), .5, 0))))
+  sum(hit) / length(pc)
 }
 
 qc_match_variable <- function(phrase, cat, want = c("any", "numeric", "categorical"), top = 4) {
@@ -91,6 +108,9 @@ qc_match_variable <- function(phrase, cat, want = c("any", "numeric", "categoric
   if (!nrow(cand)) return(data.frame())
   w <- c(scale = 1.15, group = 1.15, variable = 1, item = .8)[cand$source]
   s <- mapply(qc_match_score, phrase, cand$label, cand$question, cand$variable) * w
+  # a phrase that names one category ("the intervention group", "smokers") points to that category's variable
+  lvs <- vapply(seq_len(nrow(cand)), function(i) { lv <- cand$levels[[i]]; if (length(lv) < 2 || length(lv) > 12) 0 else max(vapply(lv, function(l) qc_level_score(phrase, l), 0)) }, 0)
+  s <- pmax(s, .9 * lvs * (lvs >= .5))
   s <- s + .05 * mapply(qc_level_score, phrase, cand$label)   # tie-break: prefer labels without extra concepts
   # "holding / having X" names a yes-no state: prefer the two-category variable
   if (grepl("^(holding|having|has|have|owning|with)\\b", tolower(trimws(phrase)))) s <- s + .1 * (cand$kind == "binary" & s > 0)
@@ -102,7 +122,8 @@ qc_match_variable <- function(phrase, cat, want = c("any", "numeric", "categoric
 # Category matching is symmetric (shared concepts / all concepts), so "employed" prefers "Employed" over "Not employed"
 qc_level_score <- function(phrase, level) {
   a <- qc_concepts(phrase); b <- qc_concepts(level); if (!length(a) || !length(b)) return(0)
-  length(intersect(a, b)) / length(union(a, b))
+  common <- length(intersect(a, b)) + .85 * sum(qc_stem_hit(setdiff(a, b), setdiff(b, a)))
+  common / length(union(a, b))
 }
 
 qc_match_groups <- function(g1, g2, cat) {
@@ -219,8 +240,9 @@ qc_parse_hypothesis <- function(text) {
   if (length(m) == 4) return(c(list(type = "difference", g1 = m[2], g2 = m[3], outcome = m[4], higher = NA), extra))
   p <- qc_parse_core(s1)
   # "A (significantly) predicts B after controlling for C" -> hierarchical prediction
-  if (!is.na(ctrl) && p$type == "relationship" && grepl("(?i)predict|explain", s1, perl = TRUE))
-    p <- list(type = "prediction", outcome = p$b, predictors = p$a, directions = NA)
+  # a relationship "after controlling for C" is tested as a hierarchical regression (controls first)
+  if (!is.na(ctrl) && p$type == "relationship")
+    p <- list(type = "prediction", outcome = p$b, predictors = p$a, directions = if (is.null(p[["direction"]])) NA else p[["direction"]])
   if (p$type == "prediction" && is.null(p$directions)) p$directions <- NA
   c(p, extra)
 }
@@ -367,6 +389,13 @@ qc_expected_text <- function(sp, cat) {
     reliability = sprintf("Expected: the %d items form a reliable scale (Cronbach's alpha of at least .70).", length(sp$items)),
     mediation = sprintf("Expected: %s affects %s, which in turn affects %s (indirect effect%s).", L(sp$var1), L(sp$mediator), L(sp$outcome),
                         if (!is.null(sp[["direction"]]) && !is.na(sp[["direction"]])) paste0(", ", sp[["direction"]]) else ""),
+    moderation = paste0(sprintf("Expected: the effect of %s on %s depends on %s (interaction)", L(sp$var1), L(sp$outcome), L(sp$moderator)),
+      if (!is.null(sp$stronger$at)) sprintf("; stronger at %s %s", sp$stronger$at, L(sp$moderator))
+      else if (!is.null(sp$stronger$level)) sprintf("; stronger for '%s'", LV(sp$moderator, sp$stronger$level))
+      else if (!is.null(sp$stronger$weaker_level)) sprintf("; weaker for '%s'", LV(sp$moderator, sp$stronger$weaker_level)) else "", "."),
+    paired_difference = if (!is.null(sp$expect_higher)) sprintf("Expected: values are higher for %s than for %s (same cases measured twice).", L(sp$expect_higher), L(setdiff(c(sp$var1, sp$var2), sp$expect_higher)))
+      else sprintf("Expected: %s and %s differ (same cases measured twice).", L(sp$var1), L(sp$var2)),
+    association = sprintf("Expected: %s and %s are associated (the share of each category differs between groups).", L(sp$var1), L(sp$var2)),
     "")
 }
 
@@ -383,15 +412,19 @@ qc_test_assumptions <- c(
   regression_hierarchical = "Numeric outcome; linear relationships; constant residual spread (otherwise robust tests); the same cases in both steps.",
   mediation = "Numeric predictor, mediator and outcome; linear paths. The indirect effect is tested with a bootstrap interval.",
   regression_logistic = "Two-category outcome; enough cases in the smaller category (10 per predictor).",
-  reliability_alpha = "Items measure the same construct and are coded in the same direction.")
+  reliability_alpha = "Items measure the same construct and are coded in the same direction.",
+  moderation = "Numeric outcome; linear relationships; constant residual spread (otherwise robust tests); enough cases in every moderator group. Interactions need large samples.",
+  ttest_paired = "Two numeric measurements of the same cases; the differences are roughly normal, or there are at least 30 pairs.",
+  wilcoxon_signed = "Two ordinal or numeric measurements of the same cases; compares the ranks of the differences.")
 
 qc_part_options <- function(spec, data) {
-  if (any(is.na(unlist(spec[intersect(names(spec), c("var1", "var2", "outcome", "group", "mediator"))])))) return(list())
+  if (any(is.na(unlist(spec[intersect(names(spec), c("var1", "var2", "outcome", "group", "mediator", "moderator"))])))) return(list())
   if (spec$goal == "reliability" && length(spec$items) < 2) return(list())
   if (spec$goal == "prediction" && !length(spec$predictors)) return(list())
   dd <- data
   if (!is.null(spec$compare) && !is.null(spec$group)) { dd <- dd[as.character(dd[[spec$group]]) %in% as.character(spec$compare), , drop = FALSE]
     dd[[spec$group]] <- factor(as.character(dd[[spec$group]]), levels = as.character(spec$compare)) }
+  if (exists("qc_as_factors")) dd <- qc_as_factors(dd, spec)
   sc <- tryCatch(qc_screen(dd, spec), error = function(e) NULL); if (is.null(sc)) return(list())
   rec <- sc$decision$test_id
   opts <- list(list(test_id = rec, label = qc_test_labels[[rec]], role = "Recommended", why = sc$decision$reason, assumptions = qc_test_assumptions[[rec]],
@@ -491,6 +524,7 @@ qc_mlr_predictors <- function(data, cat, outcome, scales = list()) {
 qc_mlr_check <- function(data, outcome, predictors) {
   if (!length(predictors)) return(list(verdict = "Choose at least one predictor.", status = "warn"))
   d <- qc_complete(data, c(outcome, predictors))$data; n <- nrow(d)
+  if (exists("qc_as_factors")) d <- qc_as_factors(d, list(goal = "prediction", predictors = predictors))
   terms <- sum(vapply(predictors, function(v) if (is.numeric(d[[v]])) 1 else max(1, length(unique(d[[v]])) - 1), numeric(1)))
   need <- 50 + 8 * terms; max_terms <- max(0, floor((n - 50) / 8))
   vif <- NULL; pairs <- character()

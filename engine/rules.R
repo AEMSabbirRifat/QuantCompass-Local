@@ -52,6 +52,7 @@ qc_suggest <- function(data, spec) {
     prediction        = qc_rule_prediction(data, spec),
     reliability       = qc_rule_reliability(data, spec),
     mediation         = qc_rule_mediation(data, spec),
+    moderation        = qc_rule_moderation(data, spec),
     stop("Unknown goal: ", goal))
 }
 
@@ -252,4 +253,28 @@ qc_rule_mediation <- function(data, spec) {
   list(qc_option("mediation", "Mediation analysis (bootstrap)", "recommended",
     "Tests whether the predictor affects the outcome through the mediator (indirect effect a x b), with a bootstrap confidence interval.",
     status, msgs, p, c("hayes", "preacher")))
+}
+
+qc_rule_moderation <- function(data, spec) {
+  vs <- c(spec$var1, spec$moderator, spec$outcome); qc_need(data, vs)
+  if (length(unique(vs)) < 3) return(qc_block("Predictor, moderator and outcome must be three different variables."))
+  d <- qc_complete(data, vs)$data; n <- nrow(d)
+  yt <- qc_vartype(d[[spec$outcome]])
+  if (yt %in% c("binary", "categorical", "text", "empty", "constant"))
+    return(qc_block(sprintf("'%s' is not a numeric outcome (%s). This moderation model needs a numeric outcome.", spec$outcome, yt),
+                    "For a two-category outcome, a logistic model with an interaction is planned for a later version."))
+  x <- d[[spec$var1]]
+  if ((is.factor(x) || is.character(x)) && length(unique(x)) > 2)
+    return(qc_block(sprintf("'%s' has more than two categories. Use it as the moderator (W) instead, or choose a numeric predictor.", spec$var1)))
+  w <- d[[spec$moderator]]; wcat <- is.factor(w) || is.character(w) || length(unique(w)) <= 2
+  msgs <- character(); status <- "ok"
+  if (wcat) { ns <- table(w)
+    if (length(ns) > 6) return(qc_block(sprintf("The moderator '%s' has %d categories; merge them into fewer groups first.", spec$moderator, length(ns))))
+    if (min(ns) < 10) return(qc_block(sprintf("At least one moderator group has fewer than 10 cases (%s).", paste(names(ns), ns, sep = ": ", collapse = ", "))))
+    if (min(ns) < 30) { status <- "warn"; msgs <- c(msgs, sprintf("The smallest moderator group has %d cases; its simple slope will be imprecise.", min(ns))) } }
+  if (n < 30) return(qc_block(sprintf("Only %d complete cases; a moderation model needs clearly more.", n)))
+  if (n < 200) { status <- "warn"; msgs <- c(msgs, sprintf("Interaction effects are usually small; with N = %d only fairly strong moderation can be detected reliably. A non-significant interaction says little.", n)) }
+  list(qc_option("moderation", "Moderation analysis (interaction, simple slopes)", "recommended",
+    "Tests whether the effect of the predictor on the outcome depends on the moderator (interaction term), and shows the effect at low, average and high moderator values or in each group.",
+    status, msgs, list(VAR1 = spec$var1, MODERATOR = spec$moderator, OUTCOME = spec$outcome, ROBUST = if (isTRUE(spec$robust)) "TRUE" else "FALSE"), c("hayes", "field")))
 }
