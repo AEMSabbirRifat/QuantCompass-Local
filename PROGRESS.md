@@ -56,8 +56,11 @@
 - Browser tests: new study (moderation, before/after, dummies, chi-square, fallback) all run; N=200 walkthrough H1-H8 unchanged.
 - Real codebooks: thesis 43 vars / 3 rules (ES03 code 4 correctly flagged: not in the codebook); N=200 65 vars / 3 rules, only AC02 code 6 left for the user.
 
+## Published (7 Nov 2026, night)
+- Desktop folder updated (58 files, checksums verified; your own extra files and results untouched).
+- GitHub QuantCompass-Local: 11 commits; validation run #44 passed. Runs #35-#43 failed only because they ran on half-uploaded states, and one real issue: the newest officer package reads Word tables differently on GitHub; Word codebooks are now read straight from the document XML, independent of the officer version.
+
 ## Still open
-- Publish v0.4 to the Desktop folder and GitHub (needs the laptop linked).
 - validate.yml on GitHub: optionally add "curl" to the package list (tests do not need it).
-- AI help was tested offline only (fake transport); test once with a real key on the laptop.
+- AI help was tested offline only (fake transport); test once with a real key on the laptop (AI help tab > Test the connection).
 - QuantCompass-Web still on the old engine.
