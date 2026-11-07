@@ -28,7 +28,7 @@ That's all. Everything else is clicking.
 
 | Step | What you do | What QuantCompass does |
 |---|---|---|
-| **1. Data & codebook** | Choose your data file and (recommended) your codebook | Reads any format: CSV/TSV/TXT in any encoding (incl. SoSci Survey UTF-16 exports), Excel, OpenDocument, SPSS, Stata, SAS. Reads codebooks from PDF, Word, Excel/CSV, TXT/HTML, Qualtrics (.qsf), LimeSurvey (.lss) or the labels inside an SPSS/Stata file. Shows a check table: ✓ matches, ⚠ needs your decision, ✗ not in the codebook. Nothing marked ⚠ is applied unless you tick it. Scanned PDFs are reported, never guessed. |
+| **1. Data & codebook** | Choose your data file and (recommended) your codebook | Reads any format: CSV/TSV/TXT in any encoding (incl. SoSci Survey UTF-16 exports), Excel, OpenDocument, SPSS, Stata, SAS. Reads codebooks from PDF (SoSci variable view or table layout, including written-out filter rules), Word, Excel/CSV, TXT/HTML, Qualtrics (.qsf), LimeSurvey (.lss) or the labels inside an SPSS/Stata file. Shows a check table: ✓ matches, ⚠ needs your decision, ✗ not in the codebook. Nothing marked ⚠ is applied unless you tick it. Scanned PDFs are reported, never guessed. |
 | **2. Prepare** | Switch steps on or off, decide, build | **A** case exclusions suggested from the survey's own rules (unfinished, screened out, failed attention check; speeders optional). **B** skip-logic and rule-break check using only rules defined in your survey, with Keep/Exclude and a short "Why?" (or "No rule breaks, continue"). **C** exclusions by case ID with a reason. **D** scales (mean, sum, WHO-5 index, reverse coding, Cronbach's alpha). **E** groups from plain conditions such as `ES01 is 1,2 and ES02 is 1`. |
 
 **Part B - Final data gate**
@@ -71,6 +71,8 @@ A **summary report** combines all hypotheses and includes a software/AI disclosu
 | Predict a numeric outcome | Linear regression | HC3 robust standard errors if variance is not constant |
 | Predict a yes/no outcome | Logistic regression | Warnings for few events per predictor or separation |
 | Scale | Cronbach's alpha + item analysis | - |
+| Hierarchical regression (controls first, then predictors) | Change in R-squared with F-change test; each predictor's direction checked | Robust (HC3) Wald test if variance is not constant |
+| Ordered groups ("rises from low to high") | Group comparison plus one-sided trend test (Spearman, group order vs outcome) | Both must be significant |
 | Mediation (X → M → Y) | Regression paths + percentile bootstrap CI of the indirect effect (5,000 resamples) | HC3 robust path tests if variance is not constant |
 
 Normality is judged by sample size following Kim (2013): Shapiro-Wilk below n = 50, skewness/kurtosis z-scores for n = 50-300, absolute skewness/kurtosis above 300. Mean-based tests are kept when normality fails but every group has n >= 30 and no extreme outliers (central limit theorem). Rating-scale items always use rank-based tests. You can override the automatic choice; the report then records it as your decision.
