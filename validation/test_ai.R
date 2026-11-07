@@ -25,6 +25,8 @@ test_that("keys come from the session or .env, and every provider is called in i
     if (p == "anthropic") { expect_match(log$url, "/messages$"); expect_equal(log$headers$`x-api-key`, "k") }
     if (p %in% c("mistral", "openai_compatible")) expect_equal(log$headers$Authorization, "Bearer k")
     if (p == "ollama") expect_match(log$url, "localhost:11434/v1/chat/completions")
+    if (p == "academiccloud") { expect_equal(log$url, "https://chat-ai.academiccloud.de/v1/chat/completions"); expect_equal(log$headers$Authorization, "Bearer k")
+      expect_match(log$body, '"model":"llama-3.3-70b-instruct"', fixed = TRUE) }
   }
   expect_error(qc_ai_chat(qc_ai_config("gemini", env = list(GEMINI_API_KEY = "")), "s", "u"), "No API key|error")
 })
@@ -63,4 +65,9 @@ test_that("codebook gaps: AI codes are kept only when they fit the data", {
   old <- options(qc.ai.transport = fake(ans)); g <- qc_ai_codebook_gaps(cb, d, lines, qc_ai_config("gemini", key = "k", env = list())); options(old)
   expect_setequal(names(g$vars), c("Q1", "Q2")); expect_equal(length(g$vars$Q1$values), 3)
   expect_length(g$vars$Q2$values, 0); expect_match(g$problems, "Q2")
+})
+
+test_that("answers of reasoning models (<think> ... </think>) are read correctly", {
+  expect_equal(qc_ai_json('<think>I could answer {"goal": "x"} but</think>\n```json\n{"goal": "relationship"}\n```')$goal, "relationship")
+  cfg <- qc_ai_config("academiccloud", model = "qwen3-32b", env = list(ACADEMICCLOUD_API_KEY = "k")); expect_true(cfg$ready); expect_equal(cfg$model, "qwen3-32b")
 })
