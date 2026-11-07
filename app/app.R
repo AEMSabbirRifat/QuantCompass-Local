@@ -33,7 +33,7 @@ ui <- navbarPage(
         uiOutput("sheet_ui"), uiOutput("data_info")),
       card(h5("Your codebook (recommended)"), note("PDF, Word, Excel/CSV, TXT/HTML, Qualtrics (.qsf), LimeSurvey (.lss) or the labels stored in an SPSS/Stata file. Scanned PDFs are reported, never guessed."),
         fileInput("cbfile", NULL, buttonLabel = "Choose codebook...", accept = c(".pdf", ".docx", ".xlsx", ".xls", ".csv", ".txt", ".html", ".htm", ".qsf", ".lss", ".sav", ".dta")),
-        uiOutput("cb_embedded_ui"), uiOutput("cb_info")),
+        uiOutput("cb_embedded_ui"), uiOutput("cb_info"), uiOutput("cb_ai_ui")),
       card(h5("Friendly names"), note("Readable names for columns and categories. They appear in every sentence, table and chart."), uiOutput("label_ui"))),
     column(7,
       card(h5("Codebook check"), note("✓ matches the codebook  ⚠ needs your decision  ✗ not in the codebook. Nothing marked ⚠ is applied unless you tick it."),
@@ -55,7 +55,8 @@ ui <- navbarPage(
   tabPanel("3. Final data", uiOutput("gate_ui")),
   tabPanel("4. Describe", uiOutput("describe_ui")),
   tabPanel("5. Hypotheses", uiOutput("hyp_ui")),
-  tabPanel("6. Results", uiOutput("results_ui"))
+  tabPanel("6. Results", uiOutput("results_ui")),
+  tabPanel("AI help (optional)", fluidRow(column(7, uiOutput("ai_page"))))
 )
 
 server <- function(input, output, session) {
@@ -76,7 +77,7 @@ server <- function(input, output, session) {
     emb <- tryCatch(qc_embedded_codebook(path), error = function(e) NULL)
     if (qc_file_kind(path) == "excel" && any(grepl("(?i)codebook|variables|labels|dictionary", readxl::excel_sheets(path), perl = TRUE)))
       emb <- tryCatch(qc_read_any_codebook(path, rv$raw), error = function(e) emb)
-    if (!is.null(emb) && length(emb$vars)) set_codebook(emb)
+    if (!is.null(emb) && length(emb$vars)) { rv$cb_path <- path; set_codebook(emb) }
   })
   load_raw <- function() { rv$raw <- tryCatch(qc_read(rv$path, rv$sheet), error = function(e) { showNotification(paste("Could not read the file:", conditionMessage(e)), type = "error"); NULL }) }
   output$sheet_ui <- renderUI({ req(rv$path); if (qc_file_kind(rv$path) != "excel") return(NULL)
@@ -95,6 +96,7 @@ server <- function(input, output, session) {
   }
   observeEvent(input$cbfile, { req(rv$raw)
     ext <- tools::file_ext(input$cbfile$name); p <- file.path(rv$out_dir, "data", input$cbfile$name); file.copy(input$cbfile$datapath, p, overwrite = TRUE)
+    rv$cb_path <- p
     withProgress(message = "Reading the codebook...", { cb <- qc_read_any_codebook(p, rv$raw) })
     set_codebook(cb)
     showNotification(sprintf("Codebook read: %d variables, %d survey rules.", length(cb$vars), length(cb$rules)), type = "message") })
@@ -368,7 +370,19 @@ server <- function(input, output, session) {
     B <- withProgress(message = "Breaking down your hypotheses...", qc_dissect_all(H, fdata(), catalog()))
     rv$breakdowns <- B; parts <- list()
     for (b in B) { if (!length(b$parts)) parts[[length(parts) + 1]] <- list(id = b$id, text = b$text, spec = list(goal = "relationship", var1 = NA, var2 = NA), questions = b$questions, expected = "")
-      for (pp in b$parts) parts[[length(parts) + 1]] <- list(id = pp$id, text = b$text, spec = pp$spec, questions = b$questions, expected = pp$expected, mode = "recommended", option = 1) }
+      for (pp in b$parts) parts[[length(parts) + 1]] <- list(id = pp$id, text = b$text, spec = pp$spec, questions = b$questions, expected = pp$expected, mode = "recommended", option = 1,
+                                                             confidence_label = pp$confidence_label %||% NA) }
+    cfg <- ai_cfg()
+    if (!is.null(cfg)) withProgress(message = "Asking the AI about uncertain hypotheses...", for (b in B) {
+      idx <- which(vapply(parts, function(p) identical(p$text, b$text), logical(1)))
+      unsure <- !length(b$parts) || any(vapply(b$parts, function(pp) !identical(pp$confidence_label, "high"), logical(1)))
+      if (!unsure || !length(idx)) next
+      a <- tryCatch(qc_ai_dissect(b$id, b$text, fdata(), catalog(), cfg, rv$level_labels), error = function(e) list(ok = FALSE, problems = conditionMessage(e)))
+      a$model <- sprintf("%s, %s", cfg$label, cfg$model)
+      k <- idx[1]
+      if (isTRUE(a$ok) && !length(b$parts)) { parts[[k]]$spec <- a$spec; parts[[k]]$expected <- a$expected; parts[[k]]$ai_used <- a$model; parts[[k]]$confidence_label <- "medium"
+        parts[[k]]$questions <- c("Suggested by the AI and checked against your variables. Check the type and every variable before confirming.", a$problems) }
+      else parts[[k]]$ai <- a })
     rv$parts <- parts }
   observeEvent(input$dissect, { req(nzchar(input$htexts)); start_breakdown(read_hyp_lines(input$htexts)) })
   observeEvent(input$hfile, { x <- tryCatch(if (grepl("xlsx$", input$hfile$name)) as.data.frame(readxl::read_excel(input$hfile$datapath)) else utils::read.csv(input$hfile$datapath, check.names = FALSE), error = function(e) NULL)
@@ -402,7 +416,8 @@ server <- function(input, output, session) {
     rv$parts <- c(Filter(function(p) p$id != id, rv$parts), list(list(id = id, text = txt, spec = sp, questions = character(), expected = qc_expected_text(sp, catalog()), mode = "recommended", option = 1)))
     showNotification(paste(id, "added below the other hypotheses. Check it and press Confirm."), type = "message") })
 
-  goal_names <- c("Relationship between two variables" = "relationship", "Group difference" = "difference", "Mediation" = "mediation",
+  goal_names <- c("Relationship between two variables" = "relationship", "Group difference" = "difference",
+                  "Before / after (same people measured twice)" = "paired_difference", "Mediation" = "mediation", "Moderation (interaction)" = "moderation",
                   "Association between two categories" = "association", "Prediction (multiple regression)" = "prediction",
                   "Scale reliability (Cronbach's alpha)" = "reliability")
   part_inputs <- function(k, sp) { d <- fdata(); cat0 <- catalog(); L <- rv$labels
@@ -426,6 +441,16 @@ server <- function(input, output, session) {
           column(4, selectInput(id("outcome"), "Outcome (Y)", numv, val(sp$outcome)))),
         selectInput(id("dir"), "Expected direction of the indirect effect", c("No direction stated" = "none", "Positive" = "positive", "Negative" = "negative"), dir_sel)),
       association = fluidRow(column(6, selectInput(id("var1"), "First category variable", grpv, val(sp$var1))), column(6, selectInput(id("var2"), "Second category variable", grpv, val(sp$var2)))),
+      paired_difference = tagList(fluidRow(column(6, selectInput(id("var1"), "First measurement (e.g. before)", numv, val(sp$var1))), column(6, selectInput(id("var2"), "Second measurement (e.g. after)", numv, val(sp$var2)))),
+        selectInput(id("higher"), "Which measurement is expected to be higher?", c("No direction stated" = "none", named(c(sp$var1, sp$var2)[!is.na(c(sp$var1, sp$var2))], L)), if (is.null(sp$expect_higher)) "none" else sp$expect_higher)),
+      moderation = { wv <- if (!is.null(sp$moderator) && !is.na(sp$moderator) && sp$moderator %in% names(d)) sp$moderator else NA
+        wlv <- if (!is.na(wv)) { x <- d[[wv]]; k2 <- if (is.factor(x)) levels(x) else as.character(sort(unique(stats::na.omit(x)))); if (length(k2) <= 6) stats::setNames(k2, vapply(k2, function(z) qc_level_lab(wv, z), "")) else character() } else character()
+        st_sel <- if (!is.null(sp$stronger$at)) paste0("at:", sp$stronger$at) else if (!is.null(sp$stronger$level)) paste0("level:", sp$stronger$level) else if (!is.null(sp$stronger$weaker_level)) paste0("weaker:", sp$stronger$weaker_level) else "none"
+        st_ch <- c("No pattern stated" = "none", if (length(wlv)) c(stats::setNames(paste0("level:", wlv), paste("Stronger for", names(wlv))), stats::setNames(paste0("weaker:", wlv), paste("Weaker for", names(wlv))))
+                   else c("Stronger at high values of the moderator" = "at:high", "Stronger at low values of the moderator" = "at:low"))
+        tagList(fluidRow(column(4, selectInput(id("var1"), "Predictor (X)", numv, val(sp$var1))), column(4, selectInput(id("moderator"), "Moderator (W)", allv, val(sp$moderator))),
+            column(4, selectInput(id("outcome"), "Outcome (Y)", numv, val(sp$outcome)))),
+          selectInput(id("stronger"), "Expected pattern (optional)", st_ch, st_sel)) },
       prediction = tagList(selectInput(id("outcome"), "Outcome (dependent variable)", numv, val(sp$outcome)), selectizeInput(id("preds"), "Predictors (independent variables)", allv, val(sp$predictors), multiple = TRUE),
         selectizeInput(id("controls"), "Control variables (optional; entered first, which makes it a hierarchical regression)", allv, val(sp$controls), multiple = TRUE),
         textInput(id("dirs"), "Expected direction per predictor (optional)", value = if (length(sp$directions)) paste(names(sp$directions), sp$directions, collapse = ", ") else "", placeholder = "e.g. WUC negative, WUF positive"),
@@ -447,6 +472,9 @@ server <- function(input, output, session) {
       if (nzchar(g("extreme") %||% "") && length(g("compare")) != 2) sp$expect_extreme <- list(level = g("extreme"), which = g("extreme_which") %||% "lowest") }
     if (goal == "mediation") { sp$var1 <- nz(g("var1")); sp$mediator <- nz(g("mediator")); sp$outcome <- nz(g("outcome")); sp[["direction"]] <- if (identical(g("dir"), "none")) NA else g("dir") }
     if (goal == "association") { sp$var1 <- nz(g("var1")); sp$var2 <- nz(g("var2")) }
+    if (goal == "paired_difference") { sp$var1 <- nz(g("var1")); sp$var2 <- nz(g("var2")); h <- g("higher"); if (!is.null(h) && h %in% c(sp$var1, sp$var2)) sp$expect_higher <- h }
+    if (goal == "moderation") { sp$var1 <- nz(g("var1")); sp$moderator <- nz(g("moderator")); sp$outcome <- nz(g("outcome")); st <- g("stronger") %||% "none"
+      if (st != "none") { k3 <- sub(":.*$", "", st); v3 <- sub("^[^:]*:", "", st); sp$stronger <- switch(k3, at = list(at = v3), level = list(level = v3), weaker = list(weaker_level = v3)) } }
     if (goal == "prediction") { sp$outcome <- nz(g("outcome")); sp$predictors <- setdiff(g("preds"), sp$outcome)
       ctl <- setdiff(g("controls"), c(sp$outcome, sp$predictors)); if (length(ctl)) sp$controls <- ctl
       dt <- trimws(strsplit(g("dirs") %||% "", "\\s*[,;]\\s*")[[1]]); dt <- dt[nzchar(dt)]
@@ -460,6 +488,7 @@ server <- function(input, output, session) {
     if (isTRUE(g("onesided"))) { s <- NA
       if (goal %in% c("relationship") && !is.na(sp[["direction"]])) s <- if (sp[["direction"]] == "positive") "greater" else "less"
       if (goal == "difference" && !is.null(sp$expect_higher) && !is.null(sp$compare)) s <- if (sp$expect_higher == sp$compare[1]) "greater" else "less"
+      if (goal == "paired_difference" && !is.null(sp$expect_higher)) s <- if (sp$expect_higher == sp$var1) "greater" else "less"
       if (!is.na(s)) sp$alternative <- s else showNotification("One-sided needs a stated direction (and, for groups, two groups to compare).", type = "warning") }
     sp }
   part_data <- function(sp) { d <- fdata()
@@ -469,15 +498,24 @@ server <- function(input, output, session) {
   output$parts_ui <- renderUI({ ps <- rv$parts; if (!length(ps)) return(card(h5("Breakdown"), p(class = "text-muted", "Paste your hypotheses and press 'Break them down'. Each one is split into its parts, matched to your variables, and given test options with reasons.")))
     qc_set_labels(ctx())
     tagList(lapply(seq_along(ps), function(k) { pt <- ps[[k]]; sp <- pt$spec
-      ok <- !any(is.na(unlist(sp[intersect(names(sp), c("var1", "var2", "outcome", "group", "mediator"))])))
+      ok <- !any(is.na(unlist(sp[intersect(names(sp), c("var1", "var2", "outcome", "group", "mediator", "moderator"))])))
       pd <- if (ok) tryCatch(part_data(sp), error = function(e) NULL) else NULL
       pair <- if (!is.null(pd)) tryCatch(qc_hypothesis_pair(sp, pd, pt$id), error = function(e) NULL) else NULL
       opts <- if (!is.null(pd)) tryCatch(qc_part_options(sp, part_data(utils::modifyList(sp, list(compare = NULL)))), error = function(e) list()) else list()
-      n_used <- if (!is.null(pd)) { vs <- intersect(unlist(sp[c("var1", "var2", "outcome", "group", "mediator", "predictors")]), names(pd)); sum(stats::complete.cases(pd[, vs, drop = FALSE])) } else NA
+      n_used <- if (!is.null(pd)) { vs <- intersect(unlist(sp[c("var1", "var2", "outcome", "group", "mediator", "moderator", "predictors", "controls")]), names(pd)); sum(stats::complete.cases(pd[, vs, drop = FALSE])) } else NA
       confirmed <- pt$id %in% vapply(rv$hyps, `[[`, "", "id")
-      card(div(class = "d-flex justify-content-between", h5(pt$id), if (confirmed) span(class = "decision rej", "confirmed")),
+      conf <- pt$confidence_label %||% NA
+      card(div(class = "d-flex justify-content-between", h5(pt$id), div(
+          if (!is.na(conf)) span(class = paste0("conf conf-", conf), title = "How sure QuantCompass is about this breakdown. Always check the variables.", c(high = "\u2713 Sure", medium = "\u26a0 Check", low = "? Unsure")[[conf]]),
+          if (confirmed) span(class = "decision rej ms-2", "confirmed"))),
         p(class = "hyp", pt$text), if (nzchar(pt$expected)) p(class = "small", tags$b(pt$expected)),
         if (length(pt$questions)) div(class = "openq", tags$b("Open questions"), tags$ul(lapply(pt$questions, tags$li))),
+        if (!is.null(pt$ai)) { if (isTRUE(pt$ai$ok)) div(class = "ai-sugg", tags$b("AI suggestion "), span(class = "small text-muted", "(checked against your variables)"), ": ", pt$ai$expected,
+            if (nzchar(pt$ai$reason %||% "")) div(class = "small text-muted", pt$ai$reason),
+            if (length(pt$ai$problems)) div(class = "small", paste(pt$ai$problems, collapse = " ")),
+            tags$button(type = "button", class = "btn btn-outline-primary btn-sm mt-1", "Use the AI suggestion", onclick = sprintf("Shiny.setInputValue('pt_ai', %d, {priority:'event'})", k)))
+          else div(class = "small text-muted", "AI help: ", paste(pt$ai$problems, collapse = " ")) },
+        if (!is.null(pt$ai_used)) div(class = "small text-muted", sprintf("Breakdown suggested by AI (%s); confirmed by you.", pt$ai_used)),
         part_inputs(k, sp),
         if (!is.null(pair)) div(class = "hpair", div(span(class = "lab lab-h1", pair$lab1), "Research hypothesis: ", pair$h1),
           div(span(class = "lab lab-h0", pair$lab0), "Null hypothesis: ", pair$h0), div(class = "small text-muted", pair$note),
@@ -491,19 +529,72 @@ server <- function(input, output, session) {
           tags$button(type = "button", class = "btn btn-outline-danger btn-sm ms-2", "Remove", onclick = sprintf("Shiny.setInputValue('pt_remove', %d, {priority:'event'})", k)))) })) })
   observeEvent(input$pt_update, { k <- input$pt_update; ps <- rv$parts; ps[[k]]$spec <- spec_from_part(k)
     ps[[k]]$mode <- input[[paste0("pt", k, "_mode")]] %||% "recommended"; ps[[k]]$option <- input[[paste0("pt", k, "_opt")]] %||% 1
-    ps[[k]]$expected <- qc_expected_text(ps[[k]]$spec, catalog()); rv$parts <- ps })
+    ps[[k]]$expected <- qc_expected_text(ps[[k]]$spec, catalog()); ps[[k]]$confidence_label <- NA; rv$parts <- ps })   # edited by the user: no automatic confidence
   observeEvent(input$pt_confirm, { k <- input$pt_confirm; sp <- spec_from_part(k)
-    if (any(is.na(unlist(sp[intersect(names(sp), c("var1", "var2", "outcome", "group", "mediator"))])))) { showNotification("Choose all variables first.", type = "warning"); return() }
+    if (any(is.na(unlist(sp[intersect(names(sp), c("var1", "var2", "outcome", "group", "mediator", "moderator"))])))) { showNotification("Choose all variables first.", type = "warning"); return() }
     if (sp$goal == "prediction" && !length(sp$predictors)) { showNotification("Choose at least one predictor.", type = "warning"); return() }
     if (sp$goal == "reliability" && length(sp$items) < 2) { showNotification("Choose at least two items.", type = "warning"); return() }
     mode <- input[[paste0("pt", k, "_mode")]] %||% "recommended"; opts <- qc_part_options(sp, part_data(utils::modifyList(sp, list(compare = NULL)))); ch <- "auto"
     if (mode == "manual" && length(opts)) { o <- opts[[as.integer(input[[paste0("pt", k, "_opt")]] %||% 1)]]; ch <- o$choice; sp <- o$spec }
     ps <- rv$parts; ps[[k]]$spec <- sp; ps[[k]]$mode <- mode; rv$parts <- ps
-    h <- list(id = ps[[k]]$id, text = ps[[k]]$text, spec = sp, choice = ch, mode = mode, expected = ps[[k]]$expected)
+    h <- list(id = ps[[k]]$id, text = ps[[k]]$text, spec = sp, choice = ch, mode = mode, expected = ps[[k]]$expected, ai = ps[[k]]$ai_used)
     rv$hyps <- c(Filter(function(x) x$id != h$id, rv$hyps), list(h)); showNotification(paste(h$id, "confirmed."), type = "message") })
+  observeEvent(input$pt_ai, { k <- input$pt_ai; ps <- rv$parts; a <- ps[[k]]$ai; req(isTRUE(a$ok))
+    ps[[k]]$spec <- a$spec; ps[[k]]$expected <- a$expected; ps[[k]]$ai_used <- a$model; ps[[k]]$ai <- NULL; ps[[k]]$confidence_label <- "medium"
+    ps[[k]]$questions <- c("You chose the AI suggestion. Check the type and every variable before confirming.", a$problems); rv$parts <- ps })
   observeEvent(input$pt_remove, { k <- input$pt_remove; id <- rv$parts[[k]]$id; rv$parts <- rv$parts[-k]; rv$hyps <- Filter(function(x) x$id != id, rv$hyps) })
   output$confirmed_ui <- renderUI({ if (!length(rv$hyps)) return(note("Confirm the hypotheses on the right."))
     tags$ul(lapply(rv$hyps, function(h) tags$li(tags$b(h$id), ": ", h$text, span(class = "badge bg-secondary ms-1", c(recommended = "recommended test", manual = "your choice", auto = "decided automatically")[[h$mode]])))) })
+
+  # ======================================================================= AI help (optional, the user's own key)
+  ai_env <- qc_ai_read_env(file.path(root, ".env"))
+  ai_cfg <- reactive({ if (!isTRUE(input$ai_on)) return(NULL)
+    cfg <- tryCatch(qc_ai_config(input$ai_provider %||% "", trimws(input$ai_model %||% ""), trimws(input$ai_key %||% ""), trimws(input$ai_base %||% ""), env = ai_env), error = function(e) NULL)
+    if (is.null(cfg) || !cfg$ready) NULL else cfg })
+  output$ai_page <- renderUI({
+    prov0 <- if (nzchar(ai_env$QC_AI_PROVIDER %||% "") && (ai_env$QC_AI_PROVIDER %in% names(qc_ai_providers))) ai_env$QC_AI_PROVIDER else "gemini"
+    card(h5("AI help (optional, with your own key)"),
+      p("QuantCompass works fully without AI. If you switch this on, an AI model is asked only when QuantCompass is unsure: for codebook entries it could not read and for hypotheses it could not break down with confidence."),
+      tags$ul(class = "small", tags$li("Sent: variable names, codebook labels and texts, your hypotheses. ", tags$b("Never sent: your data values.")),
+        tags$li("The AI only suggests. Every suggestion is checked against your variables and data, and you decide whether to use it."),
+        tags$li("All statistics are computed in R. Reports say where an AI suggestion was used."),
+        tags$li("Your key is used for this session only and never saved. To keep it, write it into a file called .env in the QuantCompass folder (see .env.example); that file is never uploaded.")),
+      checkboxInput("ai_on", "Use AI help when QuantCompass is unsure", FALSE),
+      selectInput("ai_provider", "Provider", stats::setNames(names(qc_ai_providers), vapply(qc_ai_providers, `[[`, "", "label")), prov0),
+      uiOutput("ai_fields"), uiOutput("ai_status"),
+      actionButton("ai_test", "Test the connection", class = "btn-outline-primary")) })
+  output$ai_fields <- renderUI({ pv <- input$ai_provider %||% "gemini"; pr <- qc_ai_providers[[pv]]; cfg0 <- qc_ai_config(pv, env = ai_env)
+    tagList(textInput("ai_model", "Model (leave empty for the default)", "", placeholder = cfg0$model),
+      if (!is.na(pr$key_env)) passwordInput("ai_key", "API key", "", placeholder = if (nzchar(cfg0$key)) "Using the key from your .env file" else "Paste your key (this session only)"),
+      if (!is.null(pr$base_env)) textInput("ai_base", "Address of the service", "", placeholder = cfg0$base)) })
+  output$ai_status <- renderUI({ if (!isTRUE(input$ai_on)) return(note("AI help is off."))
+    cfg <- ai_cfg(); if (is.null(cfg)) return(p(class = "text-danger small", "Enter an API key to use AI help."))
+    div(class = "openq small", tags$b("AI is on. "), qc_ai_notice(cfg)) })
+  observeEvent(input$ai_test, { cfg <- ai_cfg(); if (is.null(cfg)) { showNotification("Switch AI help on and enter a key first.", type = "warning"); return() }
+    r <- tryCatch(qc_ai_chat(cfg, "Answer with JSON only.", 'Return {"ok": true}.'), error = function(e) e)
+    if (inherits(r, "error")) showNotification(paste("Connection failed:", conditionMessage(r)), type = "error", duration = 12)
+    else showNotification(sprintf("Connected to %s (%s).", cfg$label, cfg$model), type = "message") })
+  cb_lines <- function() { if (is.null(rv$cb_path)) return(character())
+    same <- identical(normalizePath(rv$cb_path), normalizePath(rv$path))      # codebook inside the data file
+    if (same && qc_file_kind(rv$path) != "excel") return(character())          # never send the data itself
+    ex <- tryCatch(qc_cb_extract(rv$cb_path, names(rv$raw)), error = function(e) NULL); if (is.null(ex)) return(character())
+    if (same) { ex$lines <- character(); ex$tables <- ex$tables[grepl("(?i)codebook|variables|labels|dictionary", names(ex$tables), perl = TRUE)] }
+    c(ex$lines, unlist(lapply(ex$tables, function(t) apply(as.matrix(t), 1, function(r) paste(stats::na.omit(r), collapse = " | "))))) }
+  cb_gaps <- reactive({ req(rv$raw, rv$cb); d <- rv$raw
+    Filter(function(v) { e <- rv$cb$vars[[v]]; !qc_is_system_var(v) && (is.null(e) || is.na(e$label) || !nzchar(e$label) ||
+      (is.numeric(d[[v]]) && !length(e$values) && length(unique(stats::na.omit(d[[v]]))) <= 12 && !identical(e$kind, "text"))) }, names(d)) })
+  output$cb_ai_ui <- renderUI({ req(rv$cb); g <- cb_gaps(); if (!length(g)) return(NULL)
+    if (is.null(ai_cfg())) return(note(sprintf("%d variable(s) could not be described from the codebook (%s%s). Optional: switch on 'AI help' to ask an AI to read the codebook text for them.",
+      length(g), paste(utils::head(g, 6), collapse = ", "), if (length(g) > 6) ", ..." else "")))
+    tagList(note(sprintf("%d variable(s) could not be described from the codebook.", length(g))),
+      actionButton("cb_ai", sprintf("Ask AI to describe them (%d)", length(g)), class = "btn-outline-primary btn-sm")) })
+  observeEvent(input$cb_ai, { cfg <- ai_cfg(); req(cfg, rv$cb)
+    g <- withProgress(message = "Asking the AI to read the codebook...", tryCatch(qc_ai_codebook_gaps(rv$cb, rv$raw, cb_lines(), cfg), error = function(e) e))
+    if (inherits(g, "error")) { showNotification(paste("AI help failed:", conditionMessage(g)), type = "error", duration = 12); return() }
+    if (!length(g$vars)) { showNotification(paste(c("The AI found no descriptions.", g$problems), collapse = " "), type = "warning"); return() }
+    cb <- rv$cb; for (v in names(g$vars)) cb$vars[[v]] <- g$vars[[v]]
+    cb$problems <- unique(c(cb$problems, sprintf("%d variable(s) were described by AI (%s, %s) from the codebook text and checked against the data: %s. Please check them.", length(g$vars), cfg$label, cfg$model, paste(names(g$vars), collapse = ", ")), g$problems))
+    set_codebook(cb); showNotification(sprintf("AI described %d variable(s). Check them in the codebook check.", length(g$vars)), type = "message") })
 
   # ======================================================================= 6. run + results
   observeEvent(input$run, { if (!length(rv$hyps)) { showNotification("Confirm at least one hypothesis first.", type = "warning"); return() }
@@ -514,6 +605,9 @@ server <- function(input, output, session) {
       incProgress(1 / (length(hs) + 1), detail = "Writing the summary report")
       qc_set_labels(c0)
       meth <- tryCatch(qc_methods_text(rv$final$prep, rv$final$counts, rv$final$summary$scales, res, if (!is.null(rv$cb)) rv$cb$source else NULL), error = function(e) NULL)
+      ai_ids <- vapply(Filter(function(h) !is.null(h$ai), hs), `[[`, "", "id")
+      if (!is.null(meth) && length(ai_ids)) meth$analysis <- paste(meth$analysis, sprintf("For %s, the assignment of the hypothesis to variables was suggested by an AI system (%s), checked against the dataset and confirmed by the author; the AI did not compute any results.",
+        qc_and(ai_ids), paste(unique(vapply(Filter(function(h) !is.null(h$ai), hs), `[[`, "", "ai")), collapse = "; ")))
       t1 <- if (!is.null(rv$desc$table1)) rv$desc$table1 else tryCatch(qc_table1(fdata(), intersect(c(grep("^DM[0-9]", names(fdata()), value = TRUE), vapply(rv$final$prep$scales, `[[`, "", "name")), names(fdata()))), error = function(e) NULL)
       summ <- tryCatch(qc_summary_report(res, c0, if (!is.null(rv$desc) && is.null(rv$desc$error)) rv$desc else NULL, meth, t1, rv$breakdowns), error = function(e) { showNotification(paste("Summary report:", conditionMessage(e)), type = "error"); NULL }) })
     rv$results <- list(items = res, summary = summ, methods = meth); updateNavbarPage(session, "nav", "6. Results") })
