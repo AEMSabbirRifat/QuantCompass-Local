@@ -91,7 +91,7 @@ It also scores QuantCompass against a **test library** (`validation/corpus/`):
 
 ## Optional AI help (your own key)
 
-QuantCompass works fully without AI. In the **AI help (optional)** tab you can switch on help from Google Gemini, Mistral, Anthropic Claude, any OpenAI-compatible service (including university AI gateways) or Ollama on your own computer. It is only asked when QuantCompass is unsure: codebook entries it could not read, and hypotheses it could not break down with confidence.
+QuantCompass works fully without AI. In the **AI help (optional)** tab you can switch on help from Google Gemini, Mistral, Anthropic Claude, any OpenAI-compatible service, the GWDG Academic Cloud (Chat AI / SAIA, available to many German universities) or Ollama on your own computer. It is only asked when QuantCompass is unsure: codebook entries it could not read, and hypotheses it could not break down with confidence.
 
 - Sent: variable names, codebook labels and texts, your hypotheses. **Never your data values.**
 - Every AI suggestion is checked against your variables and data before you see it; impossible suggestions are dropped. You decide whether to use it.
