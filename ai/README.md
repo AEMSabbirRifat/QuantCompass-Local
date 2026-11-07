@@ -4,7 +4,7 @@ QuantCompass computes every result in R without AI. The AI layer only **suggests
 1. codebook entries the readers could not describe (label, answer codes, missing codes), and
 2. breakdowns of hypotheses QuantCompass is unsure about.
 
-Providers: Google Gemini, Mistral, Anthropic Claude, OpenAI or any OpenAI-compatible endpoint (e.g. a university gateway), Ollama (local).
+Providers: Google Gemini, Mistral, Anthropic Claude, OpenAI or any OpenAI-compatible endpoint, GWDG Academic Cloud (Chat AI / SAIA: https://chat-ai.academiccloud.de/v1, model list in the app), Ollama (local).
 Settings: the "AI help (optional)" tab in the app, or a local `.env` file (copy `.env.example`). Keys are never stored by the app and `.env` is git-ignored.
 
 Rules the code follows (tested in `validation/test_ai.R` with a fake transport):
