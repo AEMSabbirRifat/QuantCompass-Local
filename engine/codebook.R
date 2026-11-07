@@ -53,12 +53,33 @@ qc_codebook_from_list <- function(rows, source, rules = list(), pages = NULL, pr
   list(vars = vars, rules = rules, pages = pages, source = source, problems = problems)
 }
 
+# ---------------------------------------------------------------- Word files
+# Reads a .docx straight from its XML (word/document.xml), so the result does not depend on the officer version:
+# paragraphs outside tables in document order, every paragraph (incl. table cells) for plain text, and each table as
+# a data frame whose first row is the header. Several paragraphs in one cell are joined with "; ".
+qc_docx_read <- function(path) {
+  dir <- tempfile("qc_docx_"); on.exit(unlink(dir, recursive = TRUE))
+  utils::unzip(path, files = "word/document.xml", exdir = dir)
+  x <- xml2::read_xml(file.path(dir, "word", "document.xml")); ns <- xml2::xml_ns(x)
+  ptext <- function(p) paste(xml2::xml_text(xml2::xml_find_all(p, ".//w:t", ns)), collapse = "")
+  body <- xml2::xml_find_first(x, "//w:body", ns)
+  paras <- vapply(xml2::xml_find_all(body, "./w:p", ns), ptext, "")
+  all_paras <- vapply(xml2::xml_find_all(body, ".//w:p", ns), ptext, "")
+  tables <- lapply(xml2::xml_find_all(body, ".//w:tbl", ns), function(tb) {
+    rows <- lapply(xml2::xml_find_all(tb, "./w:tr", ns), function(tr)
+      vapply(xml2::xml_find_all(tr, "./w:tc", ns), function(tc) { ps <- vapply(xml2::xml_find_all(tc, "./w:p", ns), ptext, ""); paste(ps[nzchar(trimws(ps))], collapse = "; ") }, ""))
+    rows <- rows[lengths(rows) > 0]; if (length(rows) < 2) return(NULL)
+    k <- max(lengths(rows)); m <- t(vapply(rows, function(z) c(z, rep("", k - length(z)))[seq_len(k)], character(k)))
+    df <- as.data.frame(m[-1, , drop = FALSE], stringsAsFactors = FALSE); names(df) <- make.unique(ifelse(nzchar(m[1, ]), m[1, ], paste0("col", seq_len(k)))); df })
+  list(paragraphs = paras[nzchar(trimws(paras))], text = all_paras[nzchar(trimws(all_paras))], tables = Filter(Negate(is.null), tables))
+}
+
 # ---------------------------------------------------------------- text extraction
 qc_codebook_lines <- function(path) {
   ext <- tolower(tools::file_ext(path))
   txt <- switch(ext,
     pdf = { t <- pdftools::pdf_text(path); paste(t, collapse = "\n") },
-    docx = { s <- officer::docx_summary(officer::read_docx(path)); paste(s$text[!is.na(s$text)], collapse = "\n") },
+    docx = paste(qc_docx_read(path)$text, collapse = "\n"),
     html = , htm = { h <- paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
       h <- gsub("(?i)<(br|/p|/div|/tr|/li|/h[1-6])[^>]*>", "\n", h, perl = TRUE); h <- gsub("<[^>]+>", " ", h)
       h <- gsub("&nbsp;", " ", h); h <- gsub("&amp;", "&", h); gsub("&lt;", "<", gsub("&gt;", ">", h)) },
@@ -350,12 +371,8 @@ qc_read_any_codebook_legacy <- function(path, data = NULL) {
     csv = , tsv = { f <- qc_text_format(path)
       df <- utils::read.delim(text = qc_text_file(path, f$encoding), sep = f$sep, colClasses = "character", check.names = FALSE)
       qc_codebook_table(df, src) },
-    docx = { s <- officer::docx_summary(officer::read_docx(path)); tb <- s[s$content_type == "table cell", ]
-      res <- NULL
-      if (nrow(tb)) for (t in unique(tb$doc_index)) { cells <- tb[tb$doc_index == t, ]
-        m <- tapply(cells$text, list(cells$row_id, cells$cell_id), function(z) z[1])
-        df <- as.data.frame(m[-1, , drop = FALSE], stringsAsFactors = FALSE); names(df) <- m[1, ]
-        res <- qc_codebook_table(df, paste(src, "(table)")); if (!is.null(res) && length(res$vars)) break }
+    docx = { res <- NULL
+      for (df in qc_docx_read(path)$tables) { res <- qc_codebook_table(df, paste(src, "(table)")); if (!is.null(res) && length(res$vars)) break }
       if (is.null(res) || !length(res$vars)) res <- qc_parse_codebook_text(qc_codebook_lines(path), known, src)
       res },
     { lines <- qc_codebook_lines(path)

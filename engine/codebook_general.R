@@ -127,13 +127,8 @@ qc_cb_extract <- function(path, known) {
     return(list(lines = character(), tables = list(df)))
   }
   if (ext == "docx") {
-    s <- officer::docx_summary(officer::read_docx(path))
-    lines <- s$text[s$content_type == "paragraph" & !is.na(s$text)]
-    tb <- s[s$content_type == "table cell", ]
-    if (nrow(tb)) for (t in unique(tb$doc_index)) { cells <- tb[tb$doc_index == t, ]
-      m <- tapply(cells$text, list(cells$row_id, cells$cell_id), function(z) paste(z, collapse = "; ")); m[is.na(m)] <- ""
-      df <- as.data.frame(m[-1, , drop = FALSE], stringsAsFactors = FALSE); names(df) <- m[1, ]; tables[[length(tables) + 1]] <- df }
-    return(list(lines = unlist(strsplit(lines, "\n")), tables = tables))
+    dx <- qc_docx_read(path)
+    return(list(lines = unlist(strsplit(dx$paragraphs, "\n")), tables = dx$tables))
   }
   if (ext %in% c("html", "htm")) tables <- qc_tables_from_html(path)
   if (ext == "pdf") tables <- qc_tables_from_pdf(path, known)
