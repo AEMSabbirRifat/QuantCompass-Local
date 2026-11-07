@@ -1,0 +1,235 @@
+{
+  "variables": [
+    {
+      "variable": "ENROLLED",
+      "label": "Are you currently enrolled at a university?",
+      "codes": {
+        "1": "Yes",
+        "2": "No"
+      },
+      "text": false
+    },
+    {
+      "variable": "AGE",
+      "label": "Age in years",
+      "codes": [],
+      "text": false
+    },
+    {
+      "variable": "GENDER",
+      "label": "Gender",
+      "codes": {
+        "1": "Female",
+        "2": "Male",
+        "3": "Diverse",
+        "4": "Prefer not to say"
+      },
+      "text": false
+    },
+    {
+      "variable": "REGION",
+      "label": "Region of citizenship",
+      "codes": {
+        "1": "European Union",
+        "2": "Europe outside the EU",
+        "3": "Asia",
+        "4": "Africa",
+        "5": "Americas"
+      },
+      "text": false
+    },
+    {
+      "variable": "JOB",
+      "label": "Current employment situation",
+      "codes": {
+        "1": "Part-time job",
+        "2": "Full-time job",
+        "3": "Not working"
+      },
+      "text": false
+    },
+    {
+      "variable": "HOURS",
+      "label": "Weekly working hours",
+      "codes": {
+        "1": "1-10 hours",
+        "2": "11-20 hours",
+        "3": "More than 20 hours"
+      },
+      "text": false
+    },
+    {
+      "variable": "DEBT",
+      "label": "Do you have student loans or other educational debt?",
+      "codes": {
+        "1": "Yes",
+        "2": "No"
+      },
+      "text": false
+    },
+    {
+      "variable": "STRESS_1",
+      "label": "Financial stress: I worry about paying my monthly bills.",
+      "codes": {
+        "1": "Strongly disagree",
+        "2": "Disagree",
+        "3": "Neutral",
+        "4": "Agree",
+        "5": "Strongly agree"
+      },
+      "text": false
+    },
+    {
+      "variable": "STRESS_2",
+      "label": "Financial stress: I lose sleep over money.",
+      "codes": {
+        "1": "Strongly disagree",
+        "2": "Disagree",
+        "3": "Neutral",
+        "4": "Agree",
+        "5": "Strongly agree"
+      },
+      "text": false
+    },
+    {
+      "variable": "STRESS_3",
+      "label": "Financial stress: I feel in control of my finances.",
+      "codes": {
+        "1": "Strongly disagree",
+        "2": "Disagree",
+        "3": "Neutral",
+        "4": "Agree",
+        "5": "Strongly agree"
+      },
+      "text": false
+    },
+    {
+      "variable": "STRESS_4",
+      "label": "Financial stress: Money problems affect my studies.",
+      "codes": {
+        "1": "Strongly disagree",
+        "2": "Disagree",
+        "3": "Neutral",
+        "4": "Agree",
+        "5": "Strongly agree"
+      },
+      "text": false
+    },
+    {
+      "variable": "ATTN",
+      "label": "Attention check: please select 'Agree' for this statement.",
+      "codes": {
+        "1": "Strongly disagree",
+        "2": "Disagree",
+        "3": "Neutral",
+        "4": "Agree",
+        "5": "Strongly agree"
+      },
+      "text": false
+    },
+    {
+      "variable": "SAT_1",
+      "label": "Life satisfaction: In most ways my life is close to my ideal.",
+      "codes": {
+        "1": "Completely disagree",
+        "2": "Disagree",
+        "3": "Slightly disagree",
+        "4": "Neither",
+        "5": "Slightly agree",
+        "6": "Agree",
+        "7": "Completely agree"
+      },
+      "text": false
+    },
+    {
+      "variable": "SAT_2",
+      "label": "Life satisfaction: The conditions of my life are excellent.",
+      "codes": {
+        "1": "Completely disagree",
+        "2": "Disagree",
+        "3": "Slightly disagree",
+        "4": "Neither",
+        "5": "Slightly agree",
+        "6": "Agree",
+        "7": "Completely agree"
+      },
+      "text": false
+    },
+    {
+      "variable": "SAT_3",
+      "label": "Life satisfaction: I am satisfied with my life.",
+      "codes": {
+        "1": "Completely disagree",
+        "2": "Disagree",
+        "3": "Slightly disagree",
+        "4": "Neither",
+        "5": "Slightly agree",
+        "6": "Agree",
+        "7": "Completely agree"
+      },
+      "text": false
+    },
+    {
+      "variable": "GRADE",
+      "label": "Average grade so far",
+      "codes": {
+        "1": "Very good",
+        "2": "Good",
+        "3": "Satisfactory",
+        "4": "Sufficient",
+        "5": "Fail",
+        "6": "Not applicable / no grades yet"
+      },
+      "text": false
+    },
+    {
+      "variable": "SLEEP",
+      "label": "Average hours of sleep per night",
+      "codes": [],
+      "text": false
+    },
+    {
+      "variable": "PRE_SCORE",
+      "label": "Test score at the start of the semester",
+      "codes": [],
+      "text": false
+    },
+    {
+      "variable": "POST_SCORE",
+      "label": "Test score at the end of the semester",
+      "codes": [],
+      "text": false
+    },
+    {
+      "variable": "COMMENT",
+      "label": "Any other comments?",
+      "codes": [],
+      "text": true
+    }
+  ],
+  "missing": "-9",
+  "rules": [
+    {
+      "cond_var": "ENROLLED",
+      "codes": 2,
+      "screen_out": true,
+      "skipped": []
+    },
+    {
+      "cond_var": "JOB",
+      "codes": 3,
+      "screen_out": false,
+      "skipped": "HOURS"
+    }
+  ],
+  "n": 150,
+  "attention": {
+    "variable": "ATTN",
+    "code": 4
+  },
+  "scales": {
+    "STRESS": ["STRESS_1", "STRESS_2", "STRESS_3", "STRESS_4"],
+    "SAT": ["SAT_1", "SAT_2", "SAT_3"]
+  },
+  "reverse": "STRESS_3"
+}

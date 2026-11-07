@@ -1,0 +1,376 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document>
+  <LimeSurveyDocType>Survey</LimeSurveyDocType>
+  <questions>
+    <fields/>
+    <rows>
+      <row>
+        <qid>1</qid>
+        <parent_qid>0</parent_qid>
+        <title>ENROLLED</title>
+        <question>Are you currently enrolled at a university?</question>
+        <relevance>1</relevance>
+      </row>
+      <row>
+        <qid>2</qid>
+        <parent_qid>0</parent_qid>
+        <title>AGE</title>
+        <question>Age in years</question>
+        <relevance>1</relevance>
+      </row>
+      <row>
+        <qid>3</qid>
+        <parent_qid>0</parent_qid>
+        <title>GENDER</title>
+        <question>Gender</question>
+        <relevance>1</relevance>
+      </row>
+      <row>
+        <qid>4</qid>
+        <parent_qid>0</parent_qid>
+        <title>REGION</title>
+        <question>Region of citizenship</question>
+        <relevance>1</relevance>
+      </row>
+      <row>
+        <qid>5</qid>
+        <parent_qid>0</parent_qid>
+        <title>JOB</title>
+        <question>Current employment situation</question>
+        <relevance>1</relevance>
+      </row>
+      <row>
+        <qid>6</qid>
+        <parent_qid>0</parent_qid>
+        <title>DEBT</title>
+        <question>Do you have student loans or other educational debt?</question>
+        <relevance>1</relevance>
+      </row>
+      <row>
+        <qid>7</qid>
+        <parent_qid>0</parent_qid>
+        <title>HOURS</title>
+        <question>Weekly working hours</question>
+        <relevance>((JOB.NAOK == "1" or JOB.NAOK == "2"))</relevance>
+      </row>
+      <row>
+        <qid>8</qid>
+        <parent_qid>0</parent_qid>
+        <title>STRESS</title>
+        <question>Financial stress</question>
+        <relevance>1</relevance>
+      </row>
+      <row>
+        <qid>9</qid>
+        <parent_qid>0</parent_qid>
+        <title>ATTN</title>
+        <question>Attention check: please select 'Agree' for this statement.</question>
+        <relevance>1</relevance>
+      </row>
+      <row>
+        <qid>10</qid>
+        <parent_qid>0</parent_qid>
+        <title>SAT</title>
+        <question>Life satisfaction</question>
+        <relevance>1</relevance>
+      </row>
+      <row>
+        <qid>11</qid>
+        <parent_qid>0</parent_qid>
+        <title>GRADE</title>
+        <question>Average grade so far</question>
+        <relevance>1</relevance>
+      </row>
+      <row>
+        <qid>12</qid>
+        <parent_qid>0</parent_qid>
+        <title>SLEEP</title>
+        <question>Average hours of sleep per night</question>
+        <relevance>1</relevance>
+      </row>
+      <row>
+        <qid>13</qid>
+        <parent_qid>0</parent_qid>
+        <title>PRE_SCORE</title>
+        <question>Test score at the start of the semester</question>
+        <relevance>1</relevance>
+      </row>
+      <row>
+        <qid>14</qid>
+        <parent_qid>0</parent_qid>
+        <title>POST_SCORE</title>
+        <question>Test score at the end of the semester</question>
+        <relevance>1</relevance>
+      </row>
+      <row>
+        <qid>15</qid>
+        <parent_qid>0</parent_qid>
+        <title>COMMENT</title>
+        <question>Any other comments?</question>
+        <relevance>1</relevance>
+      </row>
+    </rows>
+  </questions>
+  <answers>
+    <fields/>
+    <rows>
+      <row>
+        <qid>1</qid>
+        <code>1</code>
+        <answer>Yes</answer>
+      </row>
+      <row>
+        <qid>1</qid>
+        <code>2</code>
+        <answer>No</answer>
+      </row>
+      <row>
+        <qid>3</qid>
+        <code>1</code>
+        <answer>Female</answer>
+      </row>
+      <row>
+        <qid>3</qid>
+        <code>2</code>
+        <answer>Male</answer>
+      </row>
+      <row>
+        <qid>3</qid>
+        <code>3</code>
+        <answer>Diverse</answer>
+      </row>
+      <row>
+        <qid>3</qid>
+        <code>4</code>
+        <answer>Prefer not to say</answer>
+      </row>
+      <row>
+        <qid>4</qid>
+        <code>1</code>
+        <answer>European Union</answer>
+      </row>
+      <row>
+        <qid>4</qid>
+        <code>2</code>
+        <answer>Europe outside the EU</answer>
+      </row>
+      <row>
+        <qid>4</qid>
+        <code>3</code>
+        <answer>Asia</answer>
+      </row>
+      <row>
+        <qid>4</qid>
+        <code>4</code>
+        <answer>Africa</answer>
+      </row>
+      <row>
+        <qid>4</qid>
+        <code>5</code>
+        <answer>Americas</answer>
+      </row>
+      <row>
+        <qid>5</qid>
+        <code>1</code>
+        <answer>Part-time job</answer>
+      </row>
+      <row>
+        <qid>5</qid>
+        <code>2</code>
+        <answer>Full-time job</answer>
+      </row>
+      <row>
+        <qid>5</qid>
+        <code>3</code>
+        <answer>Not working</answer>
+      </row>
+      <row>
+        <qid>6</qid>
+        <code>1</code>
+        <answer>Yes</answer>
+      </row>
+      <row>
+        <qid>6</qid>
+        <code>2</code>
+        <answer>No</answer>
+      </row>
+      <row>
+        <qid>7</qid>
+        <code>1</code>
+        <answer>1-10 hours</answer>
+      </row>
+      <row>
+        <qid>7</qid>
+        <code>2</code>
+        <answer>11-20 hours</answer>
+      </row>
+      <row>
+        <qid>7</qid>
+        <code>3</code>
+        <answer>More than 20 hours</answer>
+      </row>
+      <row>
+        <qid>8</qid>
+        <code>1</code>
+        <answer>Strongly disagree</answer>
+      </row>
+      <row>
+        <qid>8</qid>
+        <code>2</code>
+        <answer>Disagree</answer>
+      </row>
+      <row>
+        <qid>8</qid>
+        <code>3</code>
+        <answer>Neutral</answer>
+      </row>
+      <row>
+        <qid>8</qid>
+        <code>4</code>
+        <answer>Agree</answer>
+      </row>
+      <row>
+        <qid>8</qid>
+        <code>5</code>
+        <answer>Strongly agree</answer>
+      </row>
+      <row>
+        <qid>9</qid>
+        <code>1</code>
+        <answer>Strongly disagree</answer>
+      </row>
+      <row>
+        <qid>9</qid>
+        <code>2</code>
+        <answer>Disagree</answer>
+      </row>
+      <row>
+        <qid>9</qid>
+        <code>3</code>
+        <answer>Neutral</answer>
+      </row>
+      <row>
+        <qid>9</qid>
+        <code>4</code>
+        <answer>Agree</answer>
+      </row>
+      <row>
+        <qid>9</qid>
+        <code>5</code>
+        <answer>Strongly agree</answer>
+      </row>
+      <row>
+        <qid>10</qid>
+        <code>1</code>
+        <answer>Completely disagree</answer>
+      </row>
+      <row>
+        <qid>10</qid>
+        <code>2</code>
+        <answer>Disagree</answer>
+      </row>
+      <row>
+        <qid>10</qid>
+        <code>3</code>
+        <answer>Slightly disagree</answer>
+      </row>
+      <row>
+        <qid>10</qid>
+        <code>4</code>
+        <answer>Neither</answer>
+      </row>
+      <row>
+        <qid>10</qid>
+        <code>5</code>
+        <answer>Slightly agree</answer>
+      </row>
+      <row>
+        <qid>10</qid>
+        <code>6</code>
+        <answer>Agree</answer>
+      </row>
+      <row>
+        <qid>10</qid>
+        <code>7</code>
+        <answer>Completely agree</answer>
+      </row>
+      <row>
+        <qid>11</qid>
+        <code>1</code>
+        <answer>Very good</answer>
+      </row>
+      <row>
+        <qid>11</qid>
+        <code>2</code>
+        <answer>Good</answer>
+      </row>
+      <row>
+        <qid>11</qid>
+        <code>3</code>
+        <answer>Satisfactory</answer>
+      </row>
+      <row>
+        <qid>11</qid>
+        <code>4</code>
+        <answer>Sufficient</answer>
+      </row>
+      <row>
+        <qid>11</qid>
+        <code>5</code>
+        <answer>Fail</answer>
+      </row>
+      <row>
+        <qid>11</qid>
+        <code>6</code>
+        <answer>Not applicable / no grades yet</answer>
+      </row>
+    </rows>
+  </answers>
+  <subquestions>
+    <fields/>
+    <rows>
+      <row>
+        <qid>181</qid>
+        <parent_qid>8</parent_qid>
+        <title>SQ001</title>
+        <question>I worry about paying my monthly bills.</question>
+      </row>
+      <row>
+        <qid>182</qid>
+        <parent_qid>8</parent_qid>
+        <title>SQ002</title>
+        <question>I lose sleep over money.</question>
+      </row>
+      <row>
+        <qid>183</qid>
+        <parent_qid>8</parent_qid>
+        <title>SQ003</title>
+        <question>I feel in control of my finances.</question>
+      </row>
+      <row>
+        <qid>184</qid>
+        <parent_qid>8</parent_qid>
+        <title>SQ004</title>
+        <question>Money problems affect my studies.</question>
+      </row>
+      <row>
+        <qid>201</qid>
+        <parent_qid>10</parent_qid>
+        <title>SQ001</title>
+        <question>In most ways my life is close to my ideal.</question>
+      </row>
+      <row>
+        <qid>202</qid>
+        <parent_qid>10</parent_qid>
+        <title>SQ002</title>
+        <question>The conditions of my life are excellent.</question>
+      </row>
+      <row>
+        <qid>203</qid>
+        <parent_qid>10</parent_qid>
+        <title>SQ003</title>
+        <question>I am satisfied with my life.</question>
+      </row>
+    </rows>
+  </subquestions>
+</document>

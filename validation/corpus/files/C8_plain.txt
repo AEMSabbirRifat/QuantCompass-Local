@@ -1,0 +1,77 @@
+Variable: ENROLLED
+Label: Are you currently enrolled at a university?
+Codes: 1: Yes | 2: No | -9: Not answered
+Note: If ENROLLED = 2, the survey ends (screen-out)
+
+Variable: AGE
+Label: Age in years
+
+Variable: GENDER
+Label: Gender
+Codes: 1: Female | 2: Male | 3: Diverse | 4: Prefer not to say | -9: Not answered
+
+Variable: REGION
+Label: Region of citizenship
+Codes: 1: European Union | 2: Europe outside the EU | 3: Asia | 4: Africa | 5: Americas | -9: Not answered
+
+Variable: JOB
+Label: Current employment situation
+Codes: 1: Part-time job | 2: Full-time job | 3: Not working | -9: Not answered
+
+Variable: HOURS
+Label: Weekly working hours
+Codes: 1: 1-10 hours | 2: 11-20 hours | 3: More than 20 hours | -9: Not answered
+Note: Shown only if JOB = 1 or 2 (skipped if JOB = 3)
+
+Variable: DEBT
+Label: Do you have student loans or other educational debt?
+Codes: 1: Yes | 2: No | -9: Not answered
+
+Variable: STRESS_1
+Label: Financial stress: I worry about paying my monthly bills.
+Codes: 1: Strongly disagree | 2: Disagree | 3: Neutral | 4: Agree | 5: Strongly agree | -9: Not answered
+
+Variable: STRESS_2
+Label: Financial stress: I lose sleep over money.
+Codes: 1: Strongly disagree | 2: Disagree | 3: Neutral | 4: Agree | 5: Strongly agree | -9: Not answered
+
+Variable: STRESS_3
+Label: Financial stress: I feel in control of my finances.
+Codes: 1: Strongly disagree | 2: Disagree | 3: Neutral | 4: Agree | 5: Strongly agree | -9: Not answered
+
+Variable: STRESS_4
+Label: Financial stress: Money problems affect my studies.
+Codes: 1: Strongly disagree | 2: Disagree | 3: Neutral | 4: Agree | 5: Strongly agree | -9: Not answered
+
+Variable: ATTN
+Label: Attention check: please select 'Agree' for this statement.
+Codes: 1: Strongly disagree | 2: Disagree | 3: Neutral | 4: Agree | 5: Strongly agree | -9: Not answered
+
+Variable: SAT_1
+Label: Life satisfaction: In most ways my life is close to my ideal.
+Codes: 1: Completely disagree | 2: Disagree | 3: Slightly disagree | 4: Neither | 5: Slightly agree | 6: Agree | 7: Completely agree | -9: Not answered
+
+Variable: SAT_2
+Label: Life satisfaction: The conditions of my life are excellent.
+Codes: 1: Completely disagree | 2: Disagree | 3: Slightly disagree | 4: Neither | 5: Slightly agree | 6: Agree | 7: Completely agree | -9: Not answered
+
+Variable: SAT_3
+Label: Life satisfaction: I am satisfied with my life.
+Codes: 1: Completely disagree | 2: Disagree | 3: Slightly disagree | 4: Neither | 5: Slightly agree | 6: Agree | 7: Completely agree | -9: Not answered
+
+Variable: GRADE
+Label: Average grade so far
+Codes: 1: Very good | 2: Good | 3: Satisfactory | 4: Sufficient | 5: Fail | 6: Not applicable / no grades yet | -9: Not answered
+
+Variable: SLEEP
+Label: Average hours of sleep per night
+
+Variable: PRE_SCORE
+Label: Test score at the start of the semester
+
+Variable: POST_SCORE
+Label: Test score at the end of the semester
+
+Variable: COMMENT
+Label: Any other comments?
+

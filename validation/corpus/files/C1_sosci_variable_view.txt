@@ -1,0 +1,191 @@
+Codebook - Student life survey 2026
+
+Page 01
+
+      Are you currently enrolled at a university?
+
+                         ENROLLED Are you currently enrolled at a university?
+                            1 = Yes
+                            2 = No
+                            -9 = Not answered
+
+Page 02
+
+  PHP code
+  if (value('ENROLLED') == 2) {
+    goToPage('end');
+  }
+
+      Age in years
+
+                         AGE Age in years
+                            Numeric (integer or decimal)
+
+      Gender
+
+                         GENDER Gender
+                            1 = Female
+                            2 = Male
+                            3 = Diverse
+                            4 = Prefer not to say
+                            -9 = Not answered
+
+      Region of citizenship
+
+                         REGION Region of citizenship
+                            1 = European Union
+                            2 = Europe outside the EU
+                            3 = Asia
+                            4 = Africa
+                            5 = Americas
+                            -9 = Not answered
+
+      Current employment situation
+
+                         JOB Current employment situation
+                            1 = Part-time job
+                            2 = Full-time job
+                            3 = Not working
+                            -9 = Not answered
+
+Page 03
+
+  PHP code
+  if (value('JOB') == 3) {
+    goToPage('next');
+  }
+
+      Weekly working hours
+
+                         HOURS Weekly working hours
+                            1 = 1-10 hours
+                            2 = 11-20 hours
+                            3 = More than 20 hours
+                            -9 = Not answered
+
+Page 04
+
+      Do you have student loans or other educational debt?
+
+                         DEBT Do you have student loans or other educational debt?
+                            1 = Yes
+                            2 = No
+                            -9 = Not answered
+
+      Financial stress: I worry about paying my monthly bills.
+
+                         STRESS_1 I worry about paying my monthly bills.
+                            1 = Strongly disagree
+                            2 = Disagree
+                            3 = Neutral
+                            4 = Agree
+                            5 = Strongly agree
+                            -9 = Not answered
+
+      Financial stress: I lose sleep over money.
+
+                         STRESS_2 I lose sleep over money.
+                            1 = Strongly disagree
+                            2 = Disagree
+                            3 = Neutral
+                            4 = Agree
+                            5 = Strongly agree
+                            -9 = Not answered
+
+      Financial stress: I feel in control of my finances.
+
+                         STRESS_3 I feel in control of my finances.
+                            1 = Strongly disagree
+                            2 = Disagree
+                            3 = Neutral
+                            4 = Agree
+                            5 = Strongly agree
+                            -9 = Not answered
+
+      Financial stress: Money problems affect my studies.
+
+                         STRESS_4 Money problems affect my studies.
+                            1 = Strongly disagree
+                            2 = Disagree
+                            3 = Neutral
+                            4 = Agree
+                            5 = Strongly agree
+                            -9 = Not answered
+
+      Attention check: please select 'Agree' for this statement.
+
+                         ATTN please select 'Agree' for this statement.
+                            1 = Strongly disagree
+                            2 = Disagree
+                            3 = Neutral
+                            4 = Agree
+                            5 = Strongly agree
+                            -9 = Not answered
+
+      Life satisfaction: In most ways my life is close to my ideal.
+
+                         SAT_1 In most ways my life is close to my ideal.
+                            1 = Completely disagree
+                            2 = Disagree
+                            3 = Slightly disagree
+                            4 = Neither
+                            5 = Slightly agree
+                            6 = Agree
+                            7 = Completely agree
+                            -9 = Not answered
+
+      Life satisfaction: The conditions of my life are excellent.
+
+                         SAT_2 The conditions of my life are excellent.
+                            1 = Completely disagree
+                            2 = Disagree
+                            3 = Slightly disagree
+                            4 = Neither
+                            5 = Slightly agree
+                            6 = Agree
+                            7 = Completely agree
+                            -9 = Not answered
+
+      Life satisfaction: I am satisfied with my life.
+
+                         SAT_3 I am satisfied with my life.
+                            1 = Completely disagree
+                            2 = Disagree
+                            3 = Slightly disagree
+                            4 = Neither
+                            5 = Slightly agree
+                            6 = Agree
+                            7 = Completely agree
+                            -9 = Not answered
+
+      Average grade so far
+
+                         GRADE Average grade so far
+                            1 = Very good
+                            2 = Good
+                            3 = Satisfactory
+                            4 = Sufficient
+                            5 = Fail
+                            6 = Not applicable / no grades yet
+                            -9 = Not answered
+
+      Average hours of sleep per night
+
+                         SLEEP Average hours of sleep per night
+                            Numeric (integer or decimal)
+
+      Test score at the start of the semester
+
+                         PRE_SCORE Test score at the start of the semester
+                            Numeric (integer or decimal)
+
+      Test score at the end of the semester
+
+                         POST_SCORE Test score at the end of the semester
+                            Numeric (integer or decimal)
+
+      Any other comments?
+
+                         COMMENT Any other comments?
+                            Free text
+
