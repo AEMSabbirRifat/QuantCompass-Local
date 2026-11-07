@@ -160,3 +160,49 @@ test_that("Breakdown recognises prediction and reliability hypotheses", {
   expect_equal(b$type, "reliability"); expect_equal(b$parts[[1]]$spec$items, c("wb_1", "wb_2", "wb_3")); expect_equal(b$parts[[1]]$spec$reverse, "wb_3")
   qc_dissect_scales$scales <- NULL
 })
+
+test_that("Hierarchical regression: R-squared change and F-change match anova(); directions decide support", {
+  n <- 150; c1 <- rnorm(n); c2 <- factor(sample(c("a", "b", "c"), n, TRUE)); x1 <- rnorm(n); x2 <- rnorm(n)
+  y <- .3 * c1 - .5 * x1 + .05 * x2 + rnorm(n); df <- data.frame(y, c1, c2, x1, x2); p <- file.path(vdir, "hier.csv"); utils::write.csv(df, p, row.names = FALSE)
+  r <- qc_analyse(p, NULL, list(test_id = "regression_hierarchical", params = list(OUTCOME = "y", CONTROLS_VEC = c("c1", "c2"), PREDICTORS_VEC = c("x1", "x2"))))$result
+  m1 <- lm(y ~ c1 + c2, df); m2 <- lm(y ~ c1 + c2 + x1 + x2, df); a <- anova(m1, m2)
+  expect_equal(r$delta_r2, summary(m2)$r.squared - summary(m1)$r.squared); expect_equal(r$F_change, a$F[2]); expect_equal(r$p, a[["Pr(>F)"]][2])
+  rr <- qc_analyse(p, NULL, list(test_id = "regression_hierarchical", params = list(OUTCOME = "y", CONTROLS_VEC = "c1", PREDICTORS_VEC = "x1", ROBUST = "TRUE")))$result
+  expect_true(rr$robust); expect_true(is.finite(rr$F_change))
+  ctx <- list(path = p, sheet = NULL, fixes = character(), labels = list(), level_labels = list(), out_dir = file.path(vdir, "out"))
+  h <- qc_run_hypothesis(list(id = "H4", text = "x1 x2 beyond c1", spec = list(goal = "prediction", outcome = "y", controls = c("c1", "c2"), predictors = c("x1", "x2"),
+                         directions = c(x1 = "negative", x2 = "positive"))), ctx)
+  expect_equal(h$test, "Hierarchical multiple regression"); expect_match(h$decision$short, "partly supported")
+  h2 <- qc_run_hypothesis(list(id = "H5", text = "x1 beyond", spec = list(goal = "prediction", outcome = "y", controls = "c1", predictors = "x1", directions = c(x1 = "negative"))), ctx)
+  expect_true(h2$decision$rejected); expect_true(all(file.exists(h2$files)))
+})
+
+test_that("Trend across ordered groups is tested and required for support", {
+  g <- factor(rep(c("low", "mid", "high"), each = 30), levels = c("low", "mid", "high")); y <- as.numeric(g) + rnorm(90)
+  p <- file.path(vdir, "trend.csv"); utils::write.csv(data.frame(y, g), p, row.names = FALSE)
+  ctx <- list(path = p, sheet = NULL, fixes = 'data[["g"]] <- factor(data[["g"]], levels = c("low", "mid", "high"))', labels = list(), level_labels = list(), out_dir = file.path(vdir, "out"))
+  r <- qc_run_hypothesis(list(id = "H6", text = "y rises", spec = list(goal = "difference", outcome = "y", group = "g", trend = "increasing")), ctx)
+  expect_false(is.null(r$result$trend)); expect_gt(r$result$trend$rho, 0); expect_true(r$decision$rejected)
+  r2 <- qc_run_hypothesis(list(id = "H7", text = "y falls", spec = list(goal = "difference", outcome = "y", group = "g", trend = "decreasing")), ctx)
+  expect_false(r2$decision$rejected); expect_match(r2$decision$short, "partly")
+})
+
+test_that("Breakdown reads controls, predictor-of, several groups, subgroups and 'A and B differ in'", {
+  d <- data.frame(stress = rnorm(120), wellbeing = rnorm(120), sat = rnorm(120), wuc = rnorm(120), wuf = rnorm(120),
+    debt = factor(sample(c("No debt", "Has debt"), 120, TRUE), levels = c("No debt", "Has debt")), status = sample(1:4, 120, TRUE),
+    employed = factor(sample(c("Not employed", "Employed"), 120, TRUE)), sex = factor(sample(c("Male", "Female"), 120, TRUE)))
+  labels <- list(stress = "financial stress", wellbeing = "subjective well-being", sat = "academic satisfaction", wuc = "work-university conflict",
+                 wuf = "work-university facilitation", debt = "educational debt", status = "employment status", employed = "employment", sex = "gender")
+  ll <- list(status = c("1" = "Working part-time", "2" = "Working full-time", "3" = "Never worked, but actively seeking a job", "4" = "Never worked and not seeking a job"))
+  cat0 <- qc_catalog(d, labels, ll)
+  b <- qc_dissect("H4", "H4₁: Financial stress significantly predicts well-being after controlling for educational debt (debt) and employment.", d, cat0)
+  expect_equal(b$parts[[1]]$spec$goal, "prediction"); expect_equal(b$parts[[1]]$spec$predictors, "stress"); expect_setequal(b$parts[[1]]$spec$controls, c("debt", "employed"))
+  b <- qc_dissect("H7", "* Among employed students, work-university conflict (wuc) is a significant negative predictor of academic satisfaction, and work-university facilitation (wuf) is a significant positive predictor.", d, cat0)
+  s <- b$parts[[1]]$spec; expect_equal(s$outcome, "sat"); expect_equal(s$directions, c(wuc = "negative", wuf = "positive")); expect_equal(s$subset$text, "employed is Employed")
+  b <- qc_dissect("H5", "Well-being differs significantly between the four employment-status groups: a, b, c and d. Students who are seeking a job but have never worked report the lowest well-being.", d, cat0)
+  expect_equal(b$parts[[1]]$spec$group, "status"); expect_equal(b$parts[[1]]$spec$expect_extreme$level, "3")
+  b <- qc_dissect("H8", "Male and female international students differ significantly in subjective well-being.", d, cat0)
+  expect_equal(b$parts[[1]]$spec$group, "sex"); expect_setequal(b$parts[[1]]$spec$compare, c("Male", "Female"))
+  b <- qc_dissect("H2", "Students who hold educational debt report significantly higher financial stress than students without such debt.", d, cat0)
+  expect_equal(b$parts[[1]]$spec$expect_higher, "Has debt")
+})
