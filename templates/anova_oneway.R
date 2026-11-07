@@ -42,10 +42,19 @@ sig <- if (welch$p.value < .05) "a statistically significant" else "no statistic
 apa <- sprintf("A Welch's one-way ANOVA showed %s difference in %s across the %d groups of %s, F(%d, %s) = %s, p %s, eta-squared = %s, omega-squared = %s.",
   sig, qc_lab(outcome), k, qc_lab(group), as.integer(welch$parameter[1]), qc_fmt(welch$parameter[2]),
   qc_fmt(welch$statistic), qc_fmt_p(welch$p.value), qc_fmt_r(eta2), qc_fmt_r(omega2))
+# ---- Optional: monotonic trend across ordered groups (used when the hypothesis states an order) ----
+trend <- "{{TREND}}"   # "none", "increasing" or "decreasing" (from the first to the last group)
+trend_res <- NULL
+if (trend != "none") {
+  tt <- stats::cor.test(as.integer(g), y, method = "spearman", exact = FALSE, alternative = if (trend == "increasing") "greater" else "less")
+  trend_res <- list(direction = trend, rho = unname(tt$estimate), p = tt$p.value)
+  apa <- paste(apa, sprintf("A trend test across the ordered groups (%s; Spearman's rank correlation between group order and %s) showed rho = %s, p %s (one-sided, %s trend expected).",
+    paste(levels(g), collapse = " < "), qc_lab(outcome), qc_fmt_r(trend_res$rho), qc_fmt_p(trend_res$p), trend))
+}
 result <- list(test = "anova_oneway", n_used = cc$n_used, n_excluded = cc$n_excluded,
   groups = data.frame(group = lv, n = as.vector(n), mean = as.vector(m), sd = sqrt(as.vector(v))),
   welch = list(F = unname(welch$statistic), df1 = unname(welch$parameter[1]), df2 = unname(welch$parameter[2]), p = welch$p.value),
   classic = list(F = classic[["F value"]][1], df1 = classic[["Df"]][1], df2 = classic[["Df"]][2], p = classic[["Pr(>F)"]][1]),
   p = welch$p.value, eta2 = eta2, omega2 = omega2, posthoc = posthoc,
-  assumptions = list(normality = normality, levene = levene), apa = apa, session = qc_session())
+  assumptions = list(normality = normality, levene = levene), trend = trend_res, apa = apa, session = qc_session())
 cat(apa, "\n"); print(posthoc, digits = 3, row.names = FALSE)
