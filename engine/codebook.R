@@ -173,11 +173,87 @@ qc_parse_php_rules <- function(blocks, cb, pages) {
 # ---------------------------------------------------------------- tables (Excel, CSV, Word tables)
 qc_value_string <- function(s) {
   if (is.na(s) || !nzchar(trimws(s))) return(NULL)
-  # codes may be numbers ("1 = Yes") or short words ("yes = remote workers"), separated by ; | newline or comma
-  parts <- trimws(unlist(strsplit(s, "[;|\n]|,(?=\\s*[^,=]{1,30}\\s*=)", perl = TRUE)))
+  # codes may be numbers ("1 = Yes") or short words ("yes = remote workers"), separated by ; | newline, comma,
+  # an ellipsis ("1 = Never ... 10 = Always") or a sentence break ("5 = Strongly agree. Correct = 4")
+  parts <- trimws(unlist(strsplit(s, "[;|\n]|,(?=\\s*[^,=;]{1,30}\\s*=)|\\s*(?:\u2026|\\.\\.\\.)\\s*(?=-?[0-9]+\\s*=)|\\.\\s+(?=[A-Za-z][^=.;]{0,30}=)", perl = TRUE)))
   parts <- parts[grepl("^[^=]{1,30}=", parts) & !grepl("^\\s*=", parts)]
   if (!length(parts)) return(NULL)
-  stats::setNames(trimws(sub("^[^=]*=\\s*", "", parts)), trimws(sub("\\s*=.*$", "", parts)))
+  codes <- gsub("^[\"'\u201c\u201d]|[\"'\u201c\u201d]$", "", trimws(sub("\\s*=.*$", "", parts)))
+  labs <- trimws(sub("^[^=]*=\\s*", "", parts))
+  num <- grepl("^-?[0-9]+(\\.[0-9]+)?$", codes)
+  if (any(num)) { codes <- codes[num]; labs <- labs[num] }     # numeric codes present: ignore wording such as "Correct = 4"
+  stats::setNames(labs, codes)
+}
+
+# Codebooks laid out as a table (columns such as Variable | Label | Type | Value codes | Page), e.g. a PDF
+# made in Word. Column positions are taken from the header row, so wrapped cells are joined correctly.
+qc_parse_codebook_table_lines <- function(lines, known, source) {
+  hdr <- grep("^\\s*Variable\\s{2,}.*(Label|Value)", lines)
+  if (!length(hdr)) return(NULL)
+  rows <- list(); cur <- NULL; cols <- NULL; refs <- list()
+  colpos <- function(h) { m <- gregexpr("\\S+(?: \\S+)*", h)[[1]]; data.frame(start = as.integer(m), name = tolower(regmatches(h, list(m))[[1]])) }
+  slice <- function(ln, a, b) if (nchar(ln) < a) "" else trimws(substr(ln, a, if (is.na(b)) nchar(ln) else b - 1))
+  flush <- function() if (!is.null(cur)) rows[[cur$v]] <<- cur
+  for (i in seq_along(lines)) {
+    ln <- lines[i]
+    if (i %in% hdr) { flush(); cur <- NULL; cols <- colpos(ln); next }
+    if (is.null(cols) || !nzchar(trimws(ln))) { if (!nzchar(trimws(ln))) NULL; next }
+    if (grepl("^\\s*Codebook\\b|^\\s*[0-9]+\\.\\s+[A-Z]", ln)) { flush(); cur <- NULL; if (grepl("^\\s*[0-9]+\\.\\s+[A-Z]", ln)) cols <- NULL; next }
+    ic <- function(pat) { k <- which(grepl(pat, cols$name)); if (length(k)) k[1] else NA }
+    il <- ic("label|wording|question|description"); iv <- ic("value|code"); ivar <- 1
+    nxt <- function(k) if (k < nrow(cols)) cols$start[k + 1] else NA
+    first <- slice(ln, 1, if (!is.na(il)) cols$start[il] else NA)
+    v <- sub("\\s.*$", "", first)
+    starts_var <- nzchar(v) && (is.null(known) || v %in% known) && grepl("^[A-Za-z][A-Za-z0-9_.]*$", v)
+    if (starts_var) { flush(); cur <- list(variable = v, v = v, label = "", vtxt = "", page = NA) }
+    if (is.null(cur)) next
+    if (!is.na(il)) cur$label <- trimws(paste(cur$label, slice(ln, cols$start[il], nxt(il))))
+    if (!is.na(iv)) cur$vtxt <- trimws(paste(cur$vtxt, slice(ln, cols$start[iv], nxt(iv))))
+  }
+  flush()
+  if (!length(rows)) return(NULL)
+  out <- lapply(rows, function(r) {
+    vals <- qc_value_string(gsub("\\s+", " ", r$vtxt))
+    ref <- regmatches(r$vtxt, regexec("^as\\s+([A-Za-z][A-Za-z0-9_]*)", r$vtxt))[[1]]
+    list(variable = r$variable, label = r$label, values = vals, ref = if (length(ref) == 2) ref[2] else NA,
+         kind = if (grepl("(?i)^(text|string)|free text", r$vtxt, perl = TRUE)) "text" else NULL)
+  })
+  for (k in names(out)) if (!is.na(out[[k]]$ref) && !is.null(out[[out[[k]]$ref]])) out[[k]]$values <- out[[out[[k]]$ref]]$values
+  qc_codebook_from_list(out, source = source)
+}
+
+# Filter rules written out in a codebook table, e.g.
+#   "FC07 (page 5)   FC07 = 2 (no educational debt)   Page 6 skipped: FC08, FC09 and TIME006 are blank."
+#   "SR01 (page 2)   SR01 = 2 (not an international student)   Sent to the end page."
+qc_parse_documented_rules <- function(lines, known) {
+  start <- grep("^\\s*([A-Z][A-Za-z0-9_]*)\\s+\\(page\\s*[0-9]+\\)\\s+\\S", lines)
+  out <- list()
+  for (k in start) {
+    txt <- lines[k]; j <- k + 1
+    while (j <= length(lines) && nzchar(trimws(lines[j])) && !j %in% start && !grepl("^\\s*[A-Z][A-Za-z0-9_]*\\s+\\(page", lines[j])) { txt <- paste(txt, trimws(lines[j])); j <- j + 1 }
+    txt <- gsub("\\s+", " ", txt)
+    m <- regmatches(txt, regexec("^\\s*([A-Z][A-Za-z0-9_]*)\\s+\\(page\\s*([0-9]+)\\)\\s+(.*)$", txt))[[1]]
+    v <- m[2]; page <- as.integer(m[3]); rest <- m[4]
+    cm <- regmatches(rest, regexec(sprintf("%s\\s*=\\s*(-?[0-9]+(?:\\s*(?:,|or)\\s*-?[0-9]+)*)", v), rest))[[1]]
+    if (length(cm) < 2 || (!is.null(known) && !v %in% known)) next
+    codes <- as.numeric(regmatches(cm[2], gregexpr("-?[0-9]+", cm[2]))[[1]])
+    screen <- grepl("(?i)end page|sent to the end|screen-?out|goToPage\\W+end", rest, perl = TRUE)
+    skipped <- character()
+    if (!screen && grepl("(?i)skipped", rest, perl = TRUE)) {
+      lst <- sub("(?i)^.*?skipped[^:]*:\\s*", "", rest, perl = TRUE); lst <- sub("(?i)\\s+(are|is|will be)\\s+(blank|empty|missing).*$", "", lst, perl = TRUE)
+      items <- trimws(unlist(strsplit(lst, "\\s*,\\s*|\\s+and\\s+")))
+      for (it in items) {
+        rg <- regmatches(it, regexec("^([A-Za-z][A-Za-z0-9_]*)\\s*(?:\u2026|\\.\\.\\.|\u2013|-|to)\\s*([A-Za-z][A-Za-z0-9_]*)$", it))[[1]]
+        if (length(rg) == 3 && !is.null(known) && all(rg[2:3] %in% known)) skipped <- c(skipped, known[match(rg[2], known):match(rg[3], known)])
+        else if (it %in% known) skipped <- c(skipped, it)
+      }
+      skipped <- skipped[!qc_is_system_var(skipped)]
+    }
+    cond <- sprintf('data[["%s"]] %%in%% %s', v, if (length(codes) == 1) codes else paste0("c(", paste(codes, collapse = ", "), ")"))
+    out[[length(out) + 1]] <- list(page = page, condition = cond, condition_php = sprintf("%s = %s", v, paste(codes, collapse = " or ")),
+      target = if (screen) "end" else "later page", vars_skipped = unique(skipped), text = txt, screen_out = screen, readable = TRUE)
+  }
+  out
 }
 
 qc_codebook_table <- function(df, source) {
@@ -282,7 +358,10 @@ qc_read_any_codebook <- function(path, data = NULL) {
     { lines <- qc_codebook_lines(path)
       if (ext == "pdf" && sum(nchar(trimws(lines))) < 50)
         return(list(vars = list(), rules = list(), source = src, problems = "This PDF has no readable text (it is probably a scan). QuantCompass does not guess from images: please upload the codebook as Word, Excel, CSV or the survey tool's export."))
-      qc_parse_codebook_text(lines, known, src) }),
+      cb <- qc_parse_codebook_table_lines(lines, known, src)
+      if (is.null(cb) || !length(cb$vars)) cb <- qc_parse_codebook_text(lines, known, src)
+      if (!length(cb$rules)) cb$rules <- qc_parse_documented_rules(lines, known)
+      cb }),
     error = function(e) list(vars = list(), rules = list(), source = src, problems = paste("The codebook could not be read:", conditionMessage(e))))
   if (is.null(cb) || !length(cb$vars)) {
     cb <- if (is.null(cb)) list(vars = list(), rules = list(), source = src, problems = character()) else cb
@@ -316,6 +395,7 @@ qc_codebook_check <- function(cb, data) {
       next
     }
     msg <- character(); status <- "ok"
+    if ((is.na(e$label) || !nzchar(e$label)) && qc_is_system_var(v)) e$label <- qc_system_label(v)
     if (is.na(e$label) || !nzchar(e$label)) { msg <- c(msg, "No label in the codebook."); status <- "warn" }
     na_codes <- character(); na_labels <- character()
     if (e$kind %in% c("codes", "range") && is.numeric(x)) {

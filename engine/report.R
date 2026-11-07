@@ -45,8 +45,9 @@ qc_sentence <- function(spec, data) {
     paired_difference = sprintf("We will test whether scores differ between %s and %s (the same cases measured twice).", L(spec$var1), L(spec$var2)),
     relationship = sprintf("We will test whether %s is related to %s.", L(spec$var1), L(spec$var2)),
     association = sprintf("We will test whether %s and %s are associated.", L(spec$var1), L(spec$var2)),
-    prediction = sprintf("We will test whether %s %s %s.", qc_and(sapply(spec$predictors, L)),
-                         if (length(spec$predictors) > 1) "together predict" else "predicts", L(spec$outcome)),
+    prediction = sprintf("We will test whether %s %s %s%s.", qc_and(sapply(spec$predictors, L)),
+                         if (length(spec$predictors) > 1) "together predict" else "predicts", L(spec$outcome),
+                         if (length(spec$controls)) paste(" after controlling for", qc_and(sapply(spec$controls, L))) else ""),
     reliability = sprintf("We will check whether the %d items (%s) form a reliable scale%s.", length(spec$items),
                           qc_and(spec$items), if (length(spec$reverse)) paste0(", with ", qc_and(spec$reverse), " reverse-coded") else ""),
     mediation = sprintf("We will test whether %s mediates the relationship between %s and %s.", L(spec$mediator), L(spec$var1), L(spec$outcome)),
@@ -108,6 +109,15 @@ qc_result_tables <- function(id, r) {
         note = if (isTRUE(r$robust)) "Standard errors, t and p use HC3 heteroscedasticity-robust estimates." else NULL),
         qc_tab("Model fit", data.frame(`R-squared` = fr(r$r2), `Adjusted R-squared` = fr(r$adj_r2), F = f(r$F), df = sprintf("%d, %d", r$df1, r$df2), p = fp(r$p), N = r$n_used, check.names = FALSE)))
     },
+    regression_hierarchical = {
+      st <- r$steps; cf <- r$coefficients
+      list(qc_tab("Model comparison (hierarchical regression)", data.frame(Step = st$step, `R-squared` = fr(st$R2), `Adjusted R-squared` = fr(st$adj_R2),
+          `Change in R-squared` = fr(st$delta_R2, 3), `F change` = c("-", f(st$F_change[2])), `p (change)` = c("-", fp(st$p_change[2])), check.names = FALSE),
+          note = sprintf("N = %d (the same cases in both steps).%s", r$n_used, if (isTRUE(r$robust)) " The change is tested with a robust (HC3) Wald test." else "")),
+        qc_tab("Coefficients of the final model", data.frame(Predictor = cf$label, Role = cf$step, b = f(cf$b), SE = f(cf$se), beta = c("", f(cf$beta[-1])), t = f(cf$t),
+          p = sapply(cf$p, fp), `95% CI for b` = sprintf("[%s, %s]", f(cf$ci_low), f(cf$ci_high)), check.names = FALSE),
+          note = if (isTRUE(r$robust)) "Standard errors, t and p use HC3 heteroscedasticity-robust estimates." else NULL))
+    },
     regression_logistic = {
       cf <- r$coefficients
       list(qc_tab("Logistic regression coefficients", data.frame(Predictor = cf$label,
@@ -154,6 +164,10 @@ qc_explain <- function(id, r, s) {
                                    if (sig) "It is statistically significant (p < .05)." else "It is not statistically significant (p >= .05)."),
     chisq_independence = sprintf("This test checks whether the distribution of one category depends on another (compare the row percentages in the table). %s The strength of the association is %s (Cramer's V = %s).",
                                  if (sig) "The two variables are associated (p < .05)." else "There is no evidence of an association (p >= .05).", qc_size(r$cramers_v, "r"), qc_fmt_r(r$cramers_v)),
+    regression_hierarchical = sprintf("A hierarchical regression asks whether %s still explain%s %s once %s are taken into account. The controls alone explain %.0f%% of the variation; adding the predictor%s raises this to %.0f%% (change = %s percentage points). %s Each b in the final model is the expected change in %s for a one-unit increase in that variable, with all others held constant.",
+      qc_and(sapply(s$predictors, qc_lab)), if (length(s$predictors) == 1) "s" else "", qc_lab(s$outcome), qc_and(sapply(s$controls, qc_lab)), 100 * r$r2_step1,
+      if (length(s$predictors) > 1) "s" else "", 100 * r$r2, qc_fmt(100 * r$delta_r2, 1),
+      if (r$p < .05) "This increase is statistically significant." else "This increase is not statistically significant.", qc_lab(s$outcome)),
     regression_linear = { cf <- r$coefficients[-1, ]; sp <- rownames(cf)[cf$p < .05]
       sprintf("Linear regression estimates how %s changes with each predictor while the other predictors are held constant. Together the predictors explain %.0f%% of the variation in %s (R-squared = %s, a %s effect). %s Each b value is the expected change in %s for a one-unit increase in that predictor.",
               qc_lab(s$outcome), 100 * r$r2, qc_lab(s$outcome), qc_fmt_r(r$r2), qc_size(r$r2, "r2"),
@@ -289,7 +303,7 @@ qc_write_report <- function(title, sections, out_base) {
 qc_hypothesis_pair <- function(spec, data, hid = "H1") {
   L <- qc_lab
   one_sided <- !is.null(spec$alternative) && spec$alternative != "two.sided"
-  dir <- if (is.null(spec$direction)) NA_character_ else spec$direction        # "positive" / "negative" (relationships, mediation)
+  dir <- if (is.null(spec[["direction"]])) NA_character_ else spec[["direction"]]        # "positive" / "negative" (relationships, mediation)
   hi <- if (is.null(spec$expect_higher)) NA_character_ else as.character(spec$expect_higher)   # group expected higher (two groups)
   expect_sign <- NA_real_; expect_text <- NA_character_
   p <- switch(spec$goal,
@@ -302,8 +316,16 @@ qc_hypothesis_pair <- function(spec, data, hid = "H1") {
                h0 = if (one_sided) sprintf("%s is not higher in %s than in %s.", L(spec$outcome), up, lo) else sprintf("%s does not differ between %s and %s.", L(spec$outcome), a, b))
         } else list(h1 = sprintf("%s differs between %s and %s.", L(spec$outcome), a, b),
              h0 = sprintf("%s does not differ between %s and %s.", L(spec$outcome), a, b))
-      } else list(h1 = sprintf("%s differs between at least two of the %d groups of %s.", L(spec$outcome), length(lv), L(spec$group)),
-                  h0 = sprintf("%s is the same in all %d groups of %s.", L(spec$outcome), length(lv), L(spec$group)))
+      } else if (!is.null(spec$trend) && !is.na(spec$trend)) list(
+          h1 = sprintf("%s differs between the %d groups of %s and %s from %s to %s.", L(spec$outcome), length(lv), L(spec$group),
+                       if (spec$trend == "increasing") "rises" else "falls", qc_group_name(spec$group, lv[1]), qc_group_name(spec$group, lv[length(lv)])),
+          h0 = sprintf("%s is the same in all %d groups of %s (no difference and no trend).", L(spec$outcome), length(lv), L(spec$group)),
+          note = sprintf("Tested with a group comparison and a one-sided trend test across the ordered groups (%s). The research hypothesis counts as supported only if both are significant.",
+                         paste(vapply(lv, function(l) qc_group_name(spec$group, l), ""), collapse = " < ")))
+      else list(h1 = sprintf("%s differs between at least two of the %d groups of %s.", L(spec$outcome), length(lv), L(spec$group)),
+                  h0 = sprintf("%s is the same in all %d groups of %s.", L(spec$outcome), length(lv), L(spec$group)),
+                  note = if (!is.null(spec$expect_extreme)) sprintf("Tested two-sided at alpha = .05 (all groups at once). The expectation that '%s' has the %s value is checked with the post-hoc comparisons and group means in the report.",
+                                                                    qc_group_name(spec$group, spec$expect_extreme$level), spec$expect_extreme$which) else NULL)
     },
     paired_difference = list(h1 = sprintf("Scores differ between %s and %s.", L(spec$var1), L(spec$var2)),
                              h0 = sprintf("There is no difference between %s and %s.", L(spec$var1), L(spec$var2))),
@@ -316,7 +338,13 @@ qc_hypothesis_pair <- function(spec, data, hid = "H1") {
     association = list(h1 = sprintf("%s and %s are associated.", L(spec$var1), L(spec$var2)),
                        h0 = sprintf("%s and %s are independent (not associated).", L(spec$var1), L(spec$var2))),
     prediction = { pr <- qc_and(sapply(spec$predictors, L)); several <- length(spec$predictors) > 1
-      list(h1 = sprintf("%s %s %s.", pr, if (several) "together predict" else "predicts", L(spec$outcome)),
+      dirs <- spec$directions; dirs <- dirs[!is.na(dirs) & names(dirs) %in% spec$predictors]
+      dtxt <- if (length(dirs)) paste0("; ", qc_and(vapply(names(dirs), function(v) sprintf("higher %s goes with %s %s", L(v), if (dirs[[v]] == "positive") "higher" else "lower", L(spec$outcome)), ""))) else ""
+      if (length(spec$controls)) {
+        cl <- qc_and(sapply(spec$controls, L))
+        list(h1 = sprintf("%s %s %s beyond %s (the change in R-squared is above zero)%s.", pr, if (several) "add to the prediction of" else "adds to the prediction of", L(spec$outcome), cl, dtxt),
+             h0 = sprintf("%s %s %s beyond %s (the change in R-squared is zero).", pr, if (several) "do not add to the prediction of" else "does not add to the prediction of", L(spec$outcome), cl))
+      } else list(h1 = sprintf("%s %s %s%s.", pr, if (several) "together predict" else "predicts", L(spec$outcome), dtxt),
            h0 = sprintf("%s %s %s (all coefficients are zero).", pr, if (several) "do not predict" else "does not predict", L(spec$outcome))) },
     reliability = list(h1 = sprintf("The %d items form a reliable scale (Cronbach's alpha of at least .70).", length(spec$items)),
                        h0 = sprintf("The %d items do not form a reliable scale (Cronbach's alpha below .70).", length(spec$items)),
@@ -331,7 +359,11 @@ qc_hypothesis_pair <- function(spec, data, hid = "H1") {
   if (is.null(p$note)) p$note <- if (one_sided) "Tested one-sided (the direction was stated before the analysis) at a significance level of alpha = .05."
     else if (!is.na(expect_sign)) sprintf("Tested two-sided at alpha = .05. The research hypothesis counts as supported only if the result is significant and in the stated direction (%s).", expect_text)
     else "Tested two-sided at a significance level of alpha = .05."
+  if (spec$goal == "prediction" && length(spec$directions)) { dd <- spec$directions[!is.na(spec$directions) & names(spec$directions) %in% spec$predictors]
+    if (length(dd)) { p$pred_dirs <- dd
+      p$note <- paste(p$note, "The research hypothesis counts as fully supported only if each predictor with a stated direction is also significant in that direction.") } }
   p$lab1 <- hid; p$lab0 <- paste0("H0", sub("^H", "", hid)); p$expect_sign <- expect_sign; p$expect_text <- expect_text
+  if (!is.null(spec$expect_extreme)) p$expect_extreme <- c(spec$expect_extreme, group = spec$group)
   p
 }
 
@@ -343,6 +375,19 @@ qc_effect_sign <- function(id, r) {
 }
 
 qc_decision_line <- function(id, r, pair) {
+  d <- qc_decision_core(id, r, pair)
+  ex <- pair$expect_extreme; g <- r$groups
+  if (!is.null(ex) && !is.null(g)) {
+    val <- if ("mean" %in% names(g)) g$mean else g$median; what <- if ("mean" %in% names(g)) "mean" else "median"
+    k <- if (ex$which == "lowest") which.min(val) else which.max(val); exp_lab <- qc_group_name(ex$group, ex$level)
+    got <- as.character(g$group[k]) == as.character(ex$level) || qc_group_name(ex$group, g$group[k]) == exp_lab
+    d$text <- paste(d$text, if (got) sprintf("As expected, '%s' has the %s %s (%s); see the post-hoc table for which differences are significant.", exp_lab, ex$which, what, qc_fmt(val[k]))
+      else sprintf("Not as expected: the %s %s is in '%s' (%s), not in '%s'.", ex$which, what, qc_group_name(ex$group, g$group[k]), qc_fmt(val[k]), exp_lab))
+  }
+  d
+}
+
+qc_decision_core <- function(id, r, pair) {
   if (id == "reliability_alpha") {
     ok <- r$alpha >= .70
     return(list(rejected = ok, short = if (ok) paste(pair$lab1, "supported") else paste(pair$lab1, "not supported"),
@@ -362,6 +407,29 @@ qc_decision_line <- function(id, r, pair) {
   }
   p <- r[["p"]]
   if (is.null(p) || is.na(p)) return(list(rejected = NA, short = "No decision", text = "Decision: no significance test was performed."))
+  if (p < .05 && length(pair$pred_dirs) && !is.null(r$coefficients)) {
+    cf <- r$coefficients; rn <- gsub("`", "", rownames(cf)); bad <- character(); good <- character()
+    for (v in names(pair$pred_dirs)) { i <- which(rn == v); if (!length(i)) next
+      want <- if (pair$pred_dirs[[v]] == "positive") 1 else -1; lab <- qc_lab(v)
+      txt <- sprintf("%s (b = %s, p %s)", lab, qc_fmt(cf$b[i]), qc_fmt_p(cf$p[i]))
+      if (cf$p[i] < .05 && sign(cf$b[i]) == want) good <- c(good, txt) else bad <- c(bad, sprintf("%s %s", txt, if (cf$p[i] >= .05) "is not significant" else "goes in the opposite direction")) }
+    test <- if (id == "regression_hierarchical") "the added predictors explain significant additional variance" else "the model as a whole is significant"
+    if (length(bad)) return(list(rejected = FALSE, short = sprintf("%s partly supported", pair$lab1),
+      text = sprintf("Decision: %s is rejected because %s (p %s), but not every expected effect was found: %s.%s %s is therefore only partly supported.",
+                     pair$lab0, test, qc_fmt_p(p), paste(bad, collapse = "; "), if (length(good)) sprintf(" As expected: %s.", paste(good, collapse = "; ")) else "", pair$lab1)))
+    return(list(rejected = TRUE, short = sprintf("%s rejected - %s supported", pair$lab0, pair$lab1),
+      text = sprintf("Decision: %s is rejected (%s, p %s), and each predictor goes in the expected direction: %s. The data support %s: %s",
+                     pair$lab0, test, qc_fmt_p(p), paste(good, collapse = "; "), pair$lab1, pair$h1)))
+  }
+  if (p < .05 && !is.null(r$trend)) {
+    tr <- r$trend
+    if (tr$p >= .05) return(list(rejected = FALSE, short = sprintf("%s partly supported", pair$lab1),
+      text = sprintf("Decision: the groups differ (p %s), but the expected %s trend across the ordered groups is not significant (rho = %s, p %s, one-sided). %s is therefore only partly supported.",
+                     qc_fmt_p(p), tr[["direction"]], qc_fmt_r(tr$rho), qc_fmt_p(tr$p), pair$lab1)))
+    return(list(rejected = TRUE, short = sprintf("%s rejected - %s supported", pair$lab0, pair$lab1),
+      text = sprintf("Decision: %s is rejected. The groups differ (p %s) and the values show the expected %s trend (rho = %s, p %s, one-sided). The data support %s: %s",
+                     pair$lab0, qc_fmt_p(p), tr[["direction"]], qc_fmt_r(tr$rho), qc_fmt_p(tr$p), pair$lab1, pair$h1)))
+  }
   if (p < .05) {
     s <- qc_effect_sign(id, r)
     if (!is.na(es) && !is.na(s) && s != es) return(wrong_way(sprintf("the result is statistically significant (p %s)", qc_fmt_p(p))))

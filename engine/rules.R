@@ -185,14 +185,15 @@ qc_rule_association <- function(data, spec) {
 }
 
 qc_rule_prediction <- function(data, spec) {
-  qc_need(data, c(spec$outcome, spec$predictors))
-  d <- qc_complete(data, c(spec$outcome, spec$predictors))$data
-  n <- nrow(d); k <- length(spec$predictors); yt <- qc_vartype(d[[spec$outcome]])
+  allp <- c(spec$controls, spec$predictors)
+  qc_need(data, c(spec$outcome, allp))
+  d <- qc_complete(data, c(spec$outcome, allp))$data
+  n <- nrow(d); k <- length(allp); yt <- qc_vartype(d[[spec$outcome]])
   # count model terms (a factor with L levels uses L - 1 terms)
-  terms <- sum(sapply(spec$predictors, function(v) if (is.numeric(d[[v]])) 1 else max(1, length(unique(d[[v]])) - 1)))
+  terms <- sum(sapply(allp, function(v) if (is.numeric(d[[v]])) 1 else max(1, length(unique(d[[v]])) - 1)))
   if (n <= terms + 1) return(qc_block(sprintf("%d complete cases for %d model terms: the model cannot be estimated.", n, terms),
       "Use fewer predictors, or collect more data."))
-  p <- list(OUTCOME = spec$outcome, PREDICTORS_VEC = spec$predictors)
+  p <- list(OUTCOME = spec$outcome, PREDICTORS_VEC = allp)
   if (yt != "binary") p$ROBUST <- if (isTRUE(spec$robust)) "TRUE" else "FALSE"
   if (yt == "binary") {
     yy <- d[[spec$outcome]]; events <- min(table(yy)); epv <- events / terms
@@ -211,6 +212,10 @@ qc_rule_prediction <- function(data, spec) {
   if (n < need) { status <- "warn"; msgs <- c(msgs, sprintf(
     "n = %d is below the recommended minimum of %d (50 + 8 x %d predictor terms) for testing the overall model.", n, need, terms)) }
   if (yt == "ordinal") msgs <- c(msgs, "The outcome is a single rating-scale item; a multi-item scale score is a better regression outcome.")
+  if (length(spec$controls)) { p$CONTROLS_VEC <- spec$controls; p$PREDICTORS_VEC <- spec$predictors
+    return(list(qc_option("regression_hierarchical", "Hierarchical multiple regression", "recommended",
+      "Step 1 enters the control variables, step 2 adds the predictor(s); the change in R-squared shows what they add beyond the controls.",
+      status, msgs, p, c("green", "field")))) }
   list(qc_option("regression_linear", "Multiple linear regression", "recommended",
     "Estimates how much each predictor is associated with the outcome while holding the others constant.",
     status, msgs, p, c("green", "field")))

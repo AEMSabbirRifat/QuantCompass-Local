@@ -8,7 +8,7 @@ qc_test_labels <- c(
   wilcoxon_signed = "Wilcoxon signed-rank test", anova_oneway = "Welch's one-way ANOVA",
   kruskal_wallis = "Kruskal-Wallis test", correlation_pearson = "Pearson correlation",
   correlation_spearman = "Spearman rank correlation", chisq_independence = "Chi-square test of independence",
-  regression_linear = "Multiple linear regression", regression_logistic = "Binary logistic regression",
+  regression_linear = "Multiple linear regression", regression_hierarchical = "Hierarchical multiple regression", regression_logistic = "Binary logistic regression",
   reliability_alpha = "Cronbach's alpha", mediation = "Mediation analysis (bootstrap)")
 
 qc_esc <- function(x) gsub('"', '\\\\"', gsub("\\\\", "\\\\\\\\", as.character(x)))
@@ -16,7 +16,7 @@ qc_r_vec <- function(x) if (length(x) == 0) "character(0)" else
   paste0("c(", paste0('"', qc_esc(x), '"', collapse = ", "), ")")
 qc_deparse <- function(x) paste(deparse(x, width.cutoff = 500L), collapse = " ")
 
-qc_param_defaults <- list(ROBUST = "FALSE", ALTERNATIVE = "two.sided")
+qc_param_defaults <- list(ROBUST = "FALSE", ALTERNATIVE = "two.sided", TREND = "none")
 
 # notes: comment lines (e.g. the assumption screening and decision) written into the script header
 qc_render <- function(test_id, params, load_code, hypothesis = "", labels = list(),

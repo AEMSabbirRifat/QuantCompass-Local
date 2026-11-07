@@ -200,16 +200,17 @@ qc_assumption_figures <- function(data, spec, screen) {
     d <- qc_complete(data, c(s$var1, s$var2))$data
     return(list(qc_plot_stacked(qc_grp(s$var1, d[[s$var1]]), qc_grp(s$var2, d[[s$var2]]), qc_lab(s$var1), qc_lab(s$var2))))
   }
-  if (id %in% c("regression_linear", "regression_logistic")) {
-    d <- qc_complete(data, c(s$outcome, s$predictors))$data
-    for (v in s$predictors) if (!is.numeric(d[[v]])) d[[v]] <- factor(d[[v]])
-    X <- stats::model.matrix(stats::reformulate(sprintf("`%s`", s$predictors)), d)[, -1, drop = FALSE]
+  if (id %in% c("regression_linear", "regression_logistic", "regression_hierarchical")) {
+    allp <- c(s$controls, s$predictors)
+    d <- qc_complete(data, c(s$outcome, allp))$data
+    for (v in allp) if (!is.numeric(d[[v]])) d[[v]] <- factor(d[[v]])
+    X <- stats::model.matrix(stats::reformulate(sprintf("`%s`", allp)), d)[, -1, drop = FALSE]
     colnames(X) <- sapply(gsub("`", "", colnames(X)), qc_lab)
     vif <- if (ncol(X) > 1) sapply(seq_len(ncol(X)), function(j) 1 / (1 - summary(stats::lm(X[, j] ~ X[, -j]))$r.squared)) else 1
     names(vif) <- colnames(X)
     figs <- if (ncol(X) > 1) qc_plot_vif(vif, X) else list()
-    if (id == "regression_linear") {
-      m <- stats::lm(stats::reformulate(sprintf("`%s`", s$predictors), response = sprintf("`%s`", s$outcome)), data = d)
+    if (id %in% c("regression_linear", "regression_hierarchical")) {
+      m <- stats::lm(stats::reformulate(sprintf("`%s`", allp), response = sprintf("`%s`", s$outcome)), data = d)
       figs <- c(qc_plot_normality(stats::residuals(m), NULL, "residuals"), qc_plot_residuals(m), figs)
     }
     return(figs)
@@ -250,7 +251,7 @@ qc_result_figures <- function(data, spec, screen, result) {
     d <- qc_complete(data, c(s$var1, s$var2))$data
     return(list(qc_plot_stacked(qc_grp(s$var1, d[[s$var1]]), qc_grp(s$var2, d[[s$var2]]), qc_lab(s$var1), qc_lab(s$var2))))
   }
-  if (id == "regression_linear") return(list(qc_plot_coef(result$coefficients, qc_lab(s$outcome))))
+  if (id %in% c("regression_linear", "regression_hierarchical")) return(list(qc_plot_coef(result$coefficients, qc_lab(s$outcome))))
   if (id == "regression_logistic") return(list(qc_plot_or(result$coefficients, qc_lab(s$outcome))))
   if (id == "reliability_alpha") return(list(qc_plot_items(result$items)))
   if (id == "mediation") return(list(qc_plot_mediation(result, s), qc_plot_boot(result)))

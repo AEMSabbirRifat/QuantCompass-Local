@@ -56,6 +56,7 @@ qc_run_hypothesis <- function(h, ctx) {
   opt <- Filter(function(o) identical(o$test_id, id), opts)
   if (!length(opt)) opt <- list(list(test_id = id, params = opts[[1]]$params))
   opt <- opt[[1]]
+  if (!is.null(eff$trend) && !is.na(eff$trend) && id %in% c("anova_oneway", "kruskal_wallis")) opt$params$TREND <- eff$trend
   warnings <- unique(unlist(lapply(opts, `[[`, "messages")))
   notes <- c("ASSUMPTION SCREENING (run before the test was chosen):",
     sprintf("  - %s | %s | %s | met: %s", screen$checks$check, screen$checks$method, screen$checks$value,
@@ -70,7 +71,7 @@ qc_run_hypothesis <- function(h, ctx) {
   script_file <- file.path(hdir, paste0(h$id, "_script.R")); writeLines(out$script, script_file)
   tables <- qc_result_tables(id, r); paragraph <- paste(qc_paste_paragraph(h, screen, r), sub("^Decision: ", "", dec$text))
   explanation <- qc_explain(id, r, eff)
-  vars <- unique(c(eff$var1, eff$mediator, eff$outcome, eff$group, eff$var2, eff$predictors, eff$items))
+  vars <- unique(c(eff$var1, eff$mediator, eff$outcome, eff$group, eff$var2, eff$controls, eff$predictors, eff$items))
   sections <- list(
     list(heading = "Hypotheses", items = list(list(type = "list", items = c(
       sprintf("Your hypothesis (as entered): %s", sub("\\.?$", ".", h$text)),

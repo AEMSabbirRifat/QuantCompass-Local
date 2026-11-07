@@ -195,16 +195,17 @@ qc_hc3 <- function(model) {
 }
 
 qc_screen_prediction <- function(data, spec) {
-  d <- qc_complete(data, c(spec$outcome, spec$predictors))$data
-  for (v in spec$predictors) if (!is.numeric(d[[v]])) d[[v]] <- factor(d[[v]])
+  allp <- c(spec$controls, spec$predictors)          # hierarchical models are screened on the final model
+  d <- qc_complete(data, c(spec$outcome, allp))$data
+  for (v in allp) if (!is.numeric(d[[v]])) d[[v]] <- factor(d[[v]])
   yt <- qc_vartype(d[[spec$outcome]])
-  f <- stats::reformulate(sprintf("`%s`", spec$predictors), response = sprintf("`%s`", spec$outcome))
+  f <- stats::reformulate(sprintf("`%s`", allp), response = sprintf("`%s`", spec$outcome))
   X <- NULL
   vif_of <- function(X) if (ncol(X) > 1) sapply(seq_len(ncol(X)), function(j) 1 / (1 - summary(stats::lm(X[, j] ~ X[, -j]))$r.squared)) else 1
   if (yt == "binary") {
     yy <- d[[spec$outcome]]; pos <- if (!is.null(spec$positive)) spec$positive else as.character(sort(unique(yy))[2])
     d$.y <- as.integer(as.character(yy) == pos)
-    m <- suppressWarnings(stats::glm(stats::reformulate(sprintf("`%s`", spec$predictors), response = ".y"), data = d, family = stats::binomial()))
+    m <- suppressWarnings(stats::glm(stats::reformulate(sprintf("`%s`", allp), response = ".y"), data = d, family = stats::binomial()))
     X <- stats::model.matrix(m)[, -1, drop = FALSE]; vif <- vif_of(X)
     events <- min(sum(d$.y), nrow(d) - sum(d$.y)); epv <- events / ncol(X)
     sep <- any(stats::fitted(m) < 1e-8 | stats::fitted(m) > 1 - 1e-8) || any(abs(stats::coef(m)) > 15)
@@ -240,7 +241,11 @@ qc_screen_prediction <- function(data, spec) {
     if (robust) "Because residual variance was not constant, heteroscedasticity-robust (HC3) standard errors were used for the coefficient tests."
     else "Residual variance was constant, so ordinary standard errors were used.",
     if (!checks$met[2] && n >= 30) "Residuals were not normal, but with n >= 30 the coefficient tests remain robust." else "")
-  list(checks = checks, decision = qc_decision("regression_linear", "parametric", trimws(reason),
+  hier <- length(spec$controls) > 0
+  if (hier) reason <- paste(sprintf("The hypothesis asks whether %s add%s to the prediction beyond %s, so a hierarchical regression was used: step 1 enters the controls, step 2 adds the predictor%s, and the change in R-squared is tested.",
+    qc_and(sapply(spec$predictors, qc_lab)), if (length(spec$predictors) == 1) "s" else "", qc_and(sapply(spec$controls, qc_lab)), if (length(spec$predictors) > 1) "s" else ""),
+    sub("^The outcome is numeric, so multiple linear regression was used \\(it has no direct non-parametric replacement\\)\\. ", "", reason))
+  list(checks = checks, decision = qc_decision(if (hier) "regression_hierarchical" else "regression_linear", "parametric", trimws(reason),
        c("field", "hc3", "vif", "cook", "kim")), robust = robust)
 }
 

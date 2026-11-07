@@ -33,7 +33,8 @@ qc_concept_map <- list(
   german = c("german", "language"), proficiency = c("proficiency", "cefr", "fluency", "fluent"),
   eu = c("eu", "european"), noneu = c("noneu"),
   region = c("citizenship", "nationality", "region", "country", "origin"),
-  age = c("age", "old", "older", "younger"), gender = c("gender", "sex", "male", "female", "women", "men"),
+  age = c("age", "old", "older", "younger"), gender = c("gender", "sex"), absent = c("no", "without", "none", "non"),
+  hours = c("hours", "hour", "weekly"),
   satisfaction = c("satisfaction", "satisfied", "dissatisfied"),
   low = c("low", "lower", "little", "less"), high = c("high", "higher", "more", "greater"))
 qc_concept_of <- local({ m <- character(); for (k in names(qc_concept_map)) m[qc_concept_map[[k]]] <- k; m })
@@ -42,12 +43,13 @@ qc_stopwords <- c("the", "a", "an", "of", "in", "on", "is", "are", "be", "been",
   "they", "them", "those", "these", "this", "do", "does", "significantly", "statistically", "more", "positively", "negatively",
   "associated", "correlated", "related", "relationship", "association", "correlation", "between", "among", "international",
   "germany", "currently", "current", "s", "e", "g", "how", "you", "your", "please", "indicate", "following", "what", "would", "describe",
-  "level", "total", "general", "personal", "holding", "hold", "having", "experience", "experienced")
+  "level", "total", "general", "personal", "holding", "hold", "having", "experience", "experienced", "such", "but", "who", "report", "reports",
+  "perceived", "significant", "statistically", "expected", "both", "also", "from", "into", "than", "over", "among", "group", "groups")
 
 qc_concepts <- function(x, keep_level_words = FALSE) {
   tok <- strsplit(qc_norm_text(x), " ", fixed = TRUE)[[1]]
   tok <- tok[nzchar(tok) & !tok %in% qc_stopwords]
-  tok <- ifelse(nchar(tok) > 4 & grepl("s$", tok) & !grepl("ss$", tok), sub("s$", "", tok), tok)
+  tok <- ifelse(nchar(tok) > 4 & grepl("ies$", tok), sub("ies$", "y", tok), ifelse(nchar(tok) > 4 & grepl("s$", tok) & !grepl("ss$", tok), sub("s$", "", tok), tok))
   con <- ifelse(tok %in% names(qc_concept_of), qc_concept_of[tok], tok)
   con <- unique(unname(con))
   if (!keep_level_words) con <- setdiff(con, c("low", "high"))
@@ -89,6 +91,7 @@ qc_match_variable <- function(phrase, cat, want = c("any", "numeric", "categoric
   if (!nrow(cand)) return(data.frame())
   w <- c(scale = 1.15, group = 1.15, variable = 1, item = .8)[cand$source]
   s <- mapply(qc_match_score, phrase, cand$label, cand$question, cand$variable) * w
+  s <- s + .05 * mapply(qc_level_score, phrase, cand$label)   # tie-break: prefer labels without extra concepts
   # "holding / having X" names a yes-no state: prefer the two-category variable
   if (grepl("^(holding|having|has|have|owning|with)\\b", tolower(trimws(phrase)))) s <- s + .1 * (cand$kind == "binary" & s > 0)
   o <- order(-s); out <- cand[o, ][seq_len(min(top, nrow(cand))), ]; out$score <- round(s[o][seq_len(nrow(out))], 2)
@@ -96,15 +99,21 @@ qc_match_variable <- function(phrase, cat, want = c("any", "numeric", "categoric
 }
 
 # Find a categorical variable with two different categories that match the two group phrases
+# Category matching is symmetric (shared concepts / all concepts), so "employed" prefers "Employed" over "Not employed"
+qc_level_score <- function(phrase, level) {
+  a <- qc_concepts(phrase); b <- qc_concepts(level); if (!length(a) || !length(b)) return(0)
+  length(intersect(a, b)) / length(union(a, b))
+}
+
 qc_match_groups <- function(g1, g2, cat) {
   cand <- cat[lengths(cat$levels) >= 2 & cat$kind %in% c("binary", "categorical", "ordinal"), ]
   best <- NULL
   for (i in seq_len(nrow(cand))) {
     lv <- cand$levels[[i]]; keys <- names(lv)
-    s1 <- vapply(lv, function(l) qc_match_score(g1, l), numeric(1)); s2 <- vapply(lv, function(l) qc_match_score(g2, l), numeric(1))
-    # a phrase like "non-EU" or "working" must not match "EU" or "not working": penalise subset matches
+    s1 <- vapply(lv, function(l) qc_level_score(g1, l), numeric(1)); s2 <- vapply(lv, function(l) qc_level_score(g2, l), numeric(1))
     if (all(s1 == 0) || all(s2 == 0)) next
-    j1 <- which.max(s1); s2b <- s2; s2b[j1] <- -1; j2 <- which.max(s2b)
+    # best pair of two different categories
+    tot <- outer(s1, s2, "+"); diag(tot) <- -1; jj <- which(tot == max(tot), arr.ind = TRUE)[1, ]; j1 <- jj[1]; j2 <- jj[2]
     sc <- min(s1[j1], s2[j2]) * c(scale = 1, group = 1.15, variable = 1, item = .8)[cand$source[i]] +
           .2 * qc_match_score(paste(g1, g2), cand$label[i], cand$question[i])
     if (s2[j2] <= 0) next
@@ -117,7 +126,7 @@ qc_match_groups <- function(g1, g2, cat) {
 # ---------------------------------------------------------------- sentence patterns
 qc_strip_lead <- function(x) trimws(gsub("^(that|there is|there are|we expect that|we expect|it is expected that|hypothesis:?)\\s+", "", trimws(x), ignore.case = TRUE))
 
-qc_parse_hypothesis <- function(text) {
+qc_parse_core <- function(text) {
   t <- gsub("\\s+", " ", trimws(sub("^\\s*H[0-9]+[a-z]?\\s*[:.)-]\\s*", "", text, ignore.case = TRUE)))
   t <- sub("[.;]\\s*$", "", gsub("→|->", " to ", t)); lt <- tolower(t)
   dirw <- function(s) if (grepl("negativ|inverse", s)) "negative" else if (grepl("positiv", s)) "positive" else NA_character_
@@ -165,6 +174,57 @@ qc_parse_hypothesis <- function(text) {
   list(type = "unknown")
 }
 
+qc_numwords <- c(two = 2, three = 3, four = 4, five = 5, six = 6, seven = 7, eight = 8)
+
+# Wrapper: cleans the ID, reads the extra parts of a hypothesis (subgroup, controls, trend, expected extreme group,
+# "X is a negative predictor of Y"), then hands the main claim to qc_parse_core().
+qc_parse_hypothesis <- function(text) {
+  t <- gsub("\\s+", " ", trimws(text))
+  t <- sub("^[*•–-]+\\s*", "", t)
+  t <- sub("(?i)^H[0-9]+[a-z]?[₀-₉]*\\s*[:.)-]\\s*", "", t, perl = TRUE)
+  t <- gsub("–|—", "-", t)
+  full <- t
+  sents <- strsplit(t, "(?<=[.;])\\s+(?=[A-Z])", perl = TRUE)[[1]]; s1 <- sub("[.;]\\s*$", "", sents[1]); rest <- paste(sents[-1], collapse = " ")
+  among <- NA_character_
+  m <- regmatches(s1, regexec("(?i)^(?:among|for|within|in)\\s+(.*?),\\s*(.*)$", s1, perl = TRUE))[[1]]
+  if (length(m) == 3 && nchar(m[2]) < 60) { among <- m[2]; s1 <- m[3] }
+  ctrl_re <- "(?i),?\\s*(?:(?:after|while|when)\\s+)?(?:controlling for|over and above|accounting for|holding constant)\\s+(.*?)(?:[.;]|$)"
+  ctrl <- NA_character_
+  m <- regmatches(full, regexec(ctrl_re, full, perl = TRUE))[[1]]; if (length(m) == 2) ctrl <- m[2]
+  s1 <- trimws(sub("(?i),?\\s*(?:(?:after|while|when)\\s+)?(?:controlling for|over and above|accounting for|holding constant)\\s+.*$", "", s1, perl = TRUE))
+  trend <- if (grepl("(?i)\\b(rises?|increases?|grows?|goes up|higher)\\b.*\\bas\\b.*\\b(increases?|rises?|grows?|more)\\b", full, perl = TRUE)) "increasing"
+    else if (grepl("(?i)\\b(falls?|decreases?|declines?|drops?|lower)\\b.*\\bas\\b.*\\b(increases?|rises?|grows?|more)\\b", full, perl = TRUE)) "decreasing" else NA_character_
+  extreme <- NULL
+  m <- regmatches(rest, regexec("(?i)^(.*?)\\s+(?:report|reports|have|has|show|shows|score|scores)\\s+the\\s+(lowest|highest)\\b", rest, perl = TRUE))[[1]]
+  if (length(m) == 3) extreme <- list(phrase = m[2], which = tolower(m[3]))
+  extra <- list(among = among, controls = ctrl, trend = trend, extreme = extreme)
+  dirw <- function(s) if (grepl("(?i)negativ|inverse", s, perl = TRUE)) "negative" else if (grepl("(?i)positiv", s, perl = TRUE)) "positive" else NA_character_
+  # "A is a (significant) negative predictor of Y, and B is a positive predictor"
+  cl <- strsplit(s1, ",?\\s+and\\s+(?=[^,]*\\bpredictor\\b)|;\\s*", perl = TRUE)[[1]]
+  pm <- lapply(cl, function(x) regmatches(x, regexec("(?i)^(.*?)\\s+(?:is|are)\\s+an?\\s+(?:statistically\\s+)?(?:significant\\s+)?(negative|positive)?\\s*predictors?(?:\\s+of\\s+(.*))?$", trimws(x), perl = TRUE))[[1]])
+  ok <- vapply(pm, length, 1) == 4
+  if (any(ok)) {
+    pm <- pm[ok]; out <- unlist(lapply(pm, `[`, 4)); out <- out[nzchar(out)]
+    if (length(out)) return(c(list(type = "prediction", outcome = out[1], predictors = vapply(pm, `[`, "", 2),
+                                   directions = vapply(pm, function(x) dirw(x[3]), "")), extra))
+  }
+  # several groups: "Y differs (significantly) between the four X groups: a, b, c" / "Y differs by X"
+  m <- regmatches(s1, regexec("(?i)^(.*?)\\s+differs?\\s+(?:significantly\\s+)?(?:between|across|among|by)\\s+(?:the\\s+)?(?:(two|three|four|five|six|seven|eight|[0-9]+)\\s+)?(.*?)(?:\\s+groups?)?(?::\\s*(.*))?$", s1, perl = TRUE))[[1]]
+  if (length(m) == 5 && (nzchar(m[3]) || nzchar(m[5]) || !grepl("\\band\\b", m[4]))) {
+    k <- if (!nzchar(m[3])) NA else if (grepl("^[0-9]+$", m[3])) as.numeric(m[3]) else qc_numwords[[tolower(m[3])]]
+    return(c(list(type = "difference_multi", outcome = qc_strip_lead(m[2]), group = sub("\\s+groups?$", "", m[4]), k = k), extra))
+  }
+  # "A and B (students) differ (significantly) in Y"
+  m <- regmatches(s1, regexec("(?i)^(.*?)\\s+and\\s+(.*?)\\s+differ\\s+(?:significantly\\s+)?(?:in|on|with respect to|regarding)\\s+(.*)$", s1, perl = TRUE))[[1]]
+  if (length(m) == 4) return(c(list(type = "difference", g1 = m[2], g2 = m[3], outcome = m[4], higher = NA), extra))
+  p <- qc_parse_core(s1)
+  # "A (significantly) predicts B after controlling for C" -> hierarchical prediction
+  if (!is.na(ctrl) && p$type == "relationship" && grepl("(?i)predict|explain", s1, perl = TRUE))
+    p <- list(type = "prediction", outcome = p$b, predictors = p$a, directions = NA)
+  if (p$type == "prediction" && is.null(p$directions)) p$directions <- NA
+  c(p, extra)
+}
+
 # Split "A and B" when the halves stand for two different variables better than the whole phrase does
 qc_split_compound <- function(phrase, cat) {
   parts <- strsplit(phrase, "\\s+(?:and|as well as|&)\\s+", perl = TRUE)[[1]]
@@ -188,7 +248,11 @@ qc_present_level <- function(lv) {
 qc_dissect <- function(id, text, data, cat) {
   p <- qc_parse_hypothesis(text)
   parts <- list(); questions <- character()
-  pick <- function(phrase, want = "any") { m <- qc_match_variable(phrase, cat, want)
+  pick <- function(phrase, want = "any") {
+    ac <- regmatches(phrase, regexec("\\(([A-Za-z][A-Za-z0-9_]*)\\)", phrase))[[1]]     # "(WUC)" names a variable directly
+    if (length(ac) == 2) { hit <- cat$variable[tolower(cat$variable) == tolower(ac[2])]
+      if (length(hit)) return(list(phrase = phrase, best = hit[1], score = 1, alternatives = hit[1], weak = FALSE)) }
+    m <- qc_match_variable(phrase, cat, want)
     list(phrase = phrase, best = if (nrow(m)) m$variable[1] else NA, score = if (nrow(m)) m$score[1] else 0,
          alternatives = if (nrow(m)) m$variable else character(), weak = !nrow(m) || m$score[1] < .5) }
   ask_weak <- function(x, role) if (x$weak) questions <<- c(questions, sprintf("No variable clearly matches '%s' (%s). Choose it from the list, or build it in Prepare (scales or groups).", x$phrase, role))
@@ -204,14 +268,14 @@ qc_dissect <- function(id, text, data, cat) {
     subjects <- qc_split_compound(p$a, cat); objects <- qc_split_compound(p$b, cat)
     for (sa in subjects) for (ob in objects) {
       a <- pick(sa); b <- pick(ob); ask_weak(a, "first construct"); ask_weak(b, "second construct")
-      spec <- list(goal = "relationship", var1 = a$best, var2 = b$best, direction = p$direction)
+      spec <- list(goal = "relationship", var1 = a$best, var2 = b$best, direction = p[["direction"]])
       ka <- cat$kind[cat$variable %in% a$best]; kb <- cat$kind[cat$variable %in% b$best]
       # a two-category variable: the relationship is a group comparison; direction becomes "which group is higher"
       if (length(ka) && ka %in% c("binary", "categorical") && !(length(kb) && kb %in% c("binary", "categorical"))) {
         lv <- cat$levels[[which(cat$variable == a$best)]]; pr <- qc_present_level(lv)
         spec <- list(goal = "difference", outcome = b$best, group = a$best)
-        if (!is.null(pr) && !is.na(p$direction)) spec$expect_higher <- if (p$direction == "positive") pr$present else pr$absent
-        else if (!is.na(p$direction)) questions <- c(questions, sprintf("'%s' has categories, so the relationship is tested as a group difference. Which group do you expect to be higher?", a$phrase))
+        if (!is.null(pr) && !is.na(p[["direction"]])) spec$expect_higher <- if (p[["direction"]] == "positive") pr$present else pr$absent
+        else if (!is.na(p[["direction"]])) questions <- c(questions, sprintf("'%s' has categories, so the relationship is tested as a group difference. Which group do you expect to be higher?", a$phrase))
       }
       parts[[length(parts) + 1]] <- list(spec = spec, phrases = list(a = a, b = b))
     }
@@ -219,7 +283,7 @@ qc_dissect <- function(id, text, data, cat) {
     y <- pick(p$outcome, "numeric"); ask_weak(y, "outcome")
     gm <- qc_match_groups(p$g1, p$g2, cat)
     spec <- list(goal = "difference", outcome = y$best)
-    if (is.null(gm) || gm$score < .45) {
+    if (is.null(gm) || gm$score < .35) {
       questions <- c(questions, sprintf("No grouping variable has categories that clearly match '%s' and '%s'. Build this group in Prepare > Groups, then come back.", p$g1, p$g2))
       spec$group <- if (!is.null(gm)) gm$variable else NA
     } else {
@@ -232,14 +296,33 @@ qc_dissect <- function(id, text, data, cat) {
   } else if (p$type == "mediation") {
     x <- pick(p$x); mm <- pick(p$mediator); y <- pick(p$y)
     ask_weak(x, "predictor"); ask_weak(mm, "mediator"); ask_weak(y, "outcome")
-    parts[[1]] <- list(spec = list(goal = "mediation", var1 = x$best, mediator = mm$best, outcome = y$best, direction = p$direction),
+    parts[[1]] <- list(spec = list(goal = "mediation", var1 = x$best, mediator = mm$best, outcome = y$best, direction = p[["direction"]]),
                        phrases = list(x = x, m = mm, y = y))
   } else if (p$type == "prediction") {
     y <- pick(p$outcome, "numeric"); ask_weak(y, "outcome")
-    prs <- trimws(strsplit(p$predictors, "\\s*,\\s*|\\s+and\\s+|\\s+as well as\\s+", perl = TRUE)[[1]]); prs <- prs[nzchar(prs)]
+    split_list <- function(x) { x <- trimws(strsplit(x, "\\s*,\\s*(?:and\\s+)?|\\s+and\\s+|\\s+as well as\\s+", perl = TRUE)[[1]]); x[nzchar(x)] }
+    prs <- if (length(p$predictors) > 1) p$predictors else split_list(p$predictors)
     px <- lapply(prs, pick); for (x in px) ask_weak(x, "predictor")
-    pv <- unique(stats::na.omit(vapply(px, `[[`, "", "best"))); pv <- setdiff(pv, y$best)
-    parts[[1]] <- list(spec = list(goal = "prediction", outcome = y$best, predictors = pv), phrases = c(list(outcome = y), stats::setNames(px, paste0("predictor", seq_along(px)))))
+    pv <- vapply(px, `[[`, "", "best"); dirs <- if (length(p$directions) == length(prs)) p$directions else rep(NA, length(prs))
+    keep <- !is.na(pv) & pv != y$best & !duplicated(pv); pv <- pv[keep]; dirs <- stats::setNames(dirs[keep], pv)
+    sp <- list(goal = "prediction", outcome = y$best, predictors = pv)
+    if (any(!is.na(dirs))) sp$directions <- dirs[!is.na(dirs)]
+    if (!is.na(p$controls)) { cx <- lapply(split_list(p$controls), pick); for (x in cx) ask_weak(x, "control variable")
+      sp$controls <- setdiff(unique(stats::na.omit(vapply(cx, `[[`, "", "best"))), c(pv, y$best)) }
+    parts[[1]] <- list(spec = sp, phrases = c(list(outcome = y), stats::setNames(px, paste0("predictor", seq_along(px)))))
+  } else if (p$type == "difference_multi") {
+    y <- pick(p$outcome, "numeric"); ask_weak(y, "outcome")
+    cand <- cat[lengths(cat$levels) >= 2 & cat$kind %in% c("binary", "categorical", "ordinal"), ]
+    sc <- mapply(qc_match_score, p$group, cand$label, cand$question, cand$variable) * c(scale = 1, group = 1.15, variable = 1, item = .8)[cand$source]
+    if (!is.na(p$k)) sc <- sc * ifelse(lengths(cand$levels) == p$k, 1.3, .7)
+    g <- if (length(sc) && max(sc) > .3) cand$variable[which.max(sc)] else NA
+    if (is.na(g)) questions <- c(questions, sprintf("No grouping variable clearly matches '%s'. Choose it below, or build it in Prepare > Groups.", p$group))
+    sp <- list(goal = "difference", outcome = y$best, group = g)
+    if (!is.na(p$trend)) sp$trend <- p$trend
+    if (!is.null(p$extreme) && !is.na(g)) { lv <- cand$levels[[which(cand$variable == g)]]
+      ls <- vapply(lv, function(l) qc_level_score(p$extreme$phrase, l), 0)
+      if (max(ls) > 0) sp$expect_extreme <- list(level = names(lv)[which.max(ls)], which = p$extreme$which) }
+    parts[[1]] <- list(spec = sp, phrases = list(outcome = y))
   } else if (p$type == "reliability") {
     sc <- if (is.null(scales_for_dissect())) list() else scales_for_dissect()
     nm <- vapply(sc, `[[`, "", "name"); lb <- vapply(sc, function(s) if (is.null(s$label)) "" else s$label, "")
@@ -248,28 +331,42 @@ qc_dissect <- function(id, text, data, cat) {
     else { questions <- c(questions, sprintf("No scale built in Prepare matches '%s'. Build the scale first (Prepare > Scales), or choose the items below.", p$scale))
       parts[[1]] <- list(spec = list(goal = "reliability", items = character()), phrases = list()) }
   } else questions <- c(questions, "The type of this hypothesis could not be recognised. Choose it below (relationship, group difference or mediation).")
+  # "Among employed students, ..." -> analyse only that subgroup (a category of a group variable)
+  if (!is.null(p$among) && !is.na(p$among) && length(parts)) {
+    cand <- cat[lengths(cat$levels) >= 2 & cat$kind %in% c("binary", "categorical"), ]; best <- NULL
+    for (i in seq_len(nrow(cand))) { lv <- cand$levels[[i]]; ls <- vapply(lv, function(l) qc_level_score(p$among, l), 0)
+      w <- ls * c(scale = 1, group = 1.15, variable = 1, item = .8)[cand$source[i]]
+      if (max(w) > 0 && (is.null(best) || max(w) > best$s)) best <- list(v = cand$variable[i], level = names(lv)[which.max(w)], lab = lv[[which.max(w)]], s = max(w)) }
+    if (!is.null(best) && best$s >= .5) for (i in seq_along(parts))
+      parts[[i]]$spec$subset <- list(cond = list(list(var = best$v, op = "is", values = best$level)), label = sprintf("%s only", p$among), text = sprintf("%s is %s", best$v, best$level))
+    else questions <- c(questions, sprintf("The hypothesis is about '%s' only. Write the condition in 'Only these cases' below (e.g. ES01 is 1,2).", p$among))
+  }
   # labels and expected outcomes
   for (i in seq_along(parts)) {
     sp <- parts[[i]]$spec
     parts[[i]]$id <- if (length(parts) > 1) sprintf("%s(%s)", id, c("i", "ii", "iii", "iv")[i]) else id
     parts[[i]]$expected <- qc_expected_text(sp, cat)
   }
-  list(id = id, text = text, type = p$type, direction = p$direction, compound = length(parts) > 1, parts = parts, questions = unique(questions))
+  list(id = id, text = text, type = p$type, direction = p[["direction"]], compound = length(parts) > 1, parts = parts, questions = unique(questions))
 }
 
 qc_expected_text <- function(sp, cat) {
   L <- function(v) { if (is.null(v) || is.na(v)) return("?"); r <- cat[cat$variable == v, ]; if (nrow(r)) r$label[1] else v }
   LV <- function(v, k) { r <- cat[cat$variable == v, ]; if (nrow(r) && length(r$levels[[1]]) && k %in% names(r$levels[[1]])) r$levels[[1]][[k]] else k }
   switch(sp$goal,
-    relationship = if (is.null(sp$direction) || is.na(sp$direction)) sprintf("Expected: %s and %s are related.", L(sp$var1), L(sp$var2))
-      else sprintf("Expected: the higher %s, the %s %s (%s correlation).", L(sp$var1), if (sp$direction == "positive") "higher" else "lower", L(sp$var2), sp$direction),
+    relationship = if (is.null(sp[["direction"]]) || is.na(sp[["direction"]])) sprintf("Expected: %s and %s are related.", L(sp$var1), L(sp$var2))
+      else sprintf("Expected: the higher %s, the %s %s (%s correlation).", L(sp$var1), if (sp[["direction"]] == "positive") "higher" else "lower", L(sp$var2), sp[["direction"]]),
     difference = if (!is.null(sp$expect_higher)) { other <- setdiff(if (!is.null(sp$compare)) sp$compare else names(cat$levels[[which(cat$variable == sp$group)]]), sp$expect_higher)[1]
         sprintf("Expected: %s is higher for '%s' than for '%s'.", L(sp$outcome), LV(sp$group, sp$expect_higher), LV(sp$group, other)) }
-      else sprintf("Expected: %s differs between the groups of %s.", L(sp$outcome), L(sp$group)),
-    prediction = sprintf("Expected: %s %s %s.", qc_and(vapply(sp$predictors, L, "")), if (length(sp$predictors) > 1) "together predict" else "predicts", L(sp$outcome)),
+      else paste0(sprintf("Expected: %s differs between the groups of %s", L(sp$outcome), L(sp$group)),
+        if (!is.null(sp$trend)) sprintf(" and %s across the ordered groups", if (sp$trend == "increasing") "rises" else "falls") else "",
+        if (!is.null(sp$expect_extreme)) sprintf("; '%s' %s", LV(sp$group, sp$expect_extreme$level), if (sp$expect_extreme$which == "lowest") "lowest" else "highest") else "", "."),
+    prediction = paste0(sprintf("Expected: %s %s %s", qc_and(vapply(sp$predictors, L, "")), if (length(sp$predictors) > 1) "together predict" else "predicts", L(sp$outcome)),
+      if (length(sp$controls)) sprintf(" beyond %s (hierarchical regression, change in R-squared)", qc_and(vapply(sp$controls, L, ""))) else "",
+      if (length(sp$directions)) paste0("; ", qc_and(vapply(names(sp$directions), function(v) sprintf("%s %s", L(v), sp$directions[[v]]), ""))) else "", "."),
     reliability = sprintf("Expected: the %d items form a reliable scale (Cronbach's alpha of at least .70).", length(sp$items)),
     mediation = sprintf("Expected: %s affects %s, which in turn affects %s (indirect effect%s).", L(sp$var1), L(sp$mediator), L(sp$outcome),
-                        if (!is.null(sp$direction) && !is.na(sp$direction)) paste0(", ", sp$direction) else ""),
+                        if (!is.null(sp[["direction"]]) && !is.na(sp[["direction"]])) paste0(", ", sp[["direction"]]) else ""),
     "")
 }
 
@@ -283,6 +380,7 @@ qc_test_assumptions <- c(
   correlation_spearman = "Ordinal or numeric; the relationship only needs to go consistently up or down (monotonic).",
   chisq_independence = "Two categorical variables; expected counts of at least 5 in most cells (otherwise Fisher's exact test).",
   regression_linear = "Numeric outcome; linear relationships; constant residual spread (otherwise robust standard errors).",
+  regression_hierarchical = "Numeric outcome; linear relationships; constant residual spread (otherwise robust tests); the same cases in both steps.",
   mediation = "Numeric predictor, mediator and outcome; linear paths. The indirect effect is tested with a bootstrap interval.",
   regression_logistic = "Two-category outcome; enough cases in the smaller category (10 per predictor).",
   reliability_alpha = "Items measure the same construct and are coded in the same direction.")
@@ -316,15 +414,15 @@ qc_part_options <- function(spec, data) {
 qc_dissect_all <- function(hyps, data, cat) {
   out <- lapply(names(hyps), function(id) qc_dissect(id, hyps[[id]], data, cat)); names(out) <- names(hyps)
   rel <- list()
-  for (b in out) for (pp in b$parts) if (pp$spec$goal == "relationship" && !is.null(pp$spec$direction) && !is.na(pp$spec$direction))
-    rel[[length(rel) + 1]] <- list(a = pp$spec$var1, b = pp$spec$var2, sign = if (pp$spec$direction == "positive") 1 else -1, id = pp$id)
+  for (b in out) for (pp in b$parts) if (pp$spec$goal == "relationship" && !is.null(pp$spec[["direction"]]) && !is.na(pp$spec[["direction"]]))
+    rel[[length(rel) + 1]] <- list(a = pp$spec$var1, b = pp$spec$var2, sign = if (pp$spec[["direction"]] == "positive") 1 else -1, id = pp$id)
   find <- function(a, b) { for (r in rel) if ((r$a == a && r$b == b) || (r$a == b && r$b == a)) return(r); NULL }
   for (k in seq_along(out)) for (i in seq_along(out[[k]]$parts)) {
     sp <- out[[k]]$parts[[i]]$spec
-    if (sp$goal != "mediation" || (!is.null(sp$direction) && !is.na(sp$direction)) || anyNA(c(sp$var1, sp$mediator, sp$outcome))) next
+    if (sp$goal != "mediation" || (!is.null(sp[["direction"]]) && !is.na(sp[["direction"]])) || anyNA(c(sp$var1, sp$mediator, sp$outcome))) next
     r1 <- find(sp$var1, sp$mediator); r2 <- find(sp$mediator, sp$outcome)
     if (!is.null(r1) && !is.null(r2)) {
-      sp$direction <- if (r1$sign * r2$sign > 0) "positive" else "negative"
+      sp[["direction"]] <- if (r1$sign * r2$sign > 0) "positive" else "negative"
       out[[k]]$parts[[i]]$spec <- sp
       out[[k]]$parts[[i]]$expected <- paste(qc_expected_text(sp, cat), sprintf("Direction taken from %s and %s.", r1$id, r2$id))
     }

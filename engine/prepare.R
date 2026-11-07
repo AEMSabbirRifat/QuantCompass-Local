@@ -27,8 +27,9 @@ qc_attention_items <- function(cb) {
   for (e in cb$vars) {
     lab <- e$label; if (is.na(lab)) next
     if (!grepl("(?i)(attention|reading (the|these) questions carefully|to show (that )?you|demonstrate that you|please (select|choose|tick|mark|click|answer)|select specifically|quality check)", lab, perl = TRUE)) next
-    q <- regmatches(lab, gregexpr("['‘’\"“”]([^'‘’\"“”]{1,40})['‘’\"“”]", lab, perl = TRUE))[[1]]
-    q <- gsub("^.|.$", "", q)
+    # quoted answer: try each quote style separately, so 'Agree' inside "...select 'Agree'..." is found
+    q <- unlist(lapply(c("\u2018([^\u2019]{1,40})\u2019", "'([^']{1,40})'", "\u201c([^\u201d]{1,40})\u201d", "\"([^\"]{1,40})\""),
+      function(pt) { m <- regmatches(lab, gregexpr(pt, lab, perl = TRUE))[[1]]; substr(m, 2, nchar(m) - 1) }))
     hit <- names(e$values)[tolower(trimws(e$values)) %in% tolower(trimws(q))]
     out[[e$variable]] <- list(variable = e$variable, label = lab, required = q,
                               code = if (length(hit) == 1) as.numeric(hit) else NA, answer = if (length(hit) == 1) e$values[[hit]] else NA)
@@ -59,8 +60,8 @@ qc_exclusion_suggestions <- function(data, cb) {
   for (a in qc_attention_items(cb)) if (!is.na(a$code))
     add(paste0("attention_", a$variable), sprintf("failed the attention check (%s not '%s')", a$variable, a$answer), sprintf('!(data[["%s"]] %%in%% %s)', a$variable, a$code), TRUE,
         sprintf("%s asks respondents to choose '%s'. Any other answer, or no answer, fails the check.", a$variable, a$answer))
-  if ("TIME_RSI" %in% names(data)) add("speeders", "speeders (relative speed index above 2)", 'data[["TIME_RSI"]] > 2', FALSE,
-      "TIME_RSI above 2 means the respondent was at least twice as fast as typical. Leiner (2019) suggests checking these cases. Optional - off by default.")
+  if ("TIME_RSI" %in% names(data)) add("speeders", "speeders (relative speed index 2 or higher)", 'data[["TIME_RSI"]] >= 2', FALSE,
+      "TIME_RSI of 2 or more means the respondent was at least twice as fast as typical (Leiner, 2019). Optional - off by default; switch it on if your codebook or method says so.")
   steps
 }
 
@@ -130,6 +131,7 @@ qc_scale_suggestions <- function(cb, data) {
   }
   # single items on one page that share the same answer scale (e.g. a set of 1-10 ratings)
   singles <- names(stem)[!stem %in% names(out)]
+  singles <- singles[vapply(vars[singles], function(e) !is.na(e$page), logical(1))]   # only when the codebook gives pages
   pg <- vapply(vars[singles], function(e) paste(e$page, key(e), e$kind), "")
   for (k in unique(pg[duplicated(pg)])) { vs <- names(pg)[pg == k]
     if (length(vs) >= 3 && all(vapply(vars[vs], function(e) e$kind == "range" || length(e$values) >= 4, logical(1))))
