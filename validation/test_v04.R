@@ -85,3 +85,11 @@ test_that("free-text 'please specify' fields stay text, and nominal codes are ca
   cat0 <- qc_catalog(d, list(), list(G = c(`1` = "Male", `2` = "Female", `3` = "Diverse"), L = c(`1` = "Never", `2` = "Rarely", `3` = "Sometimes", `4` = "Often", `5` = "Always")))
   expect_equal(cat0$kind[cat0$variable == "G"], "categorical"); expect_equal(cat0$kind[cat0$variable == "L"], "ordinal")
 })
+
+test_that("ordered scales vs. categories: scale words count only when the label is made of them", {
+  expect_false(qc_ordered_labels(c("Working part-time", "Working full-time", "Never worked, but actively seeking a job", "Never worked and not currently seeking a job")))
+  expect_true(qc_ordered_labels(c("At no time", "Some of the time", "Less than half of the time", "More than half of the time", "Most of the time", "All of the time")))
+  expect_true(qc_ordered_labels(c("Never", "Rarely", "Sometimes", "Often", "Very often")))
+  expect_true(qc_ordered_labels(c("A1", "A2", "B1", "B2", "C1", "C2")))
+  expect_false(qc_ordered_labels(c("Student dorm", "Shared flat", "With parents", "Living alone")))
+})
