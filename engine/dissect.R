@@ -488,8 +488,21 @@ qc_mlr_outcomes <- function(data, cat, scales = list()) {
 # Do the category labels of a coded variable have an order (agree...disagree, A1...C2, grades)?
 qc_ordered_labels <- function(lv) {
   if (length(lv) < 3) return(TRUE)
-  ord <- "(?i)agree|disagree|never|always|often|rarely|sometimes|seldom|very|not at all|extremely|slightly|moderately|somewhat|poor|fair|good|excellent|satisf|less than|more than|up to|at least|[0-9]|beginner|intermediate|advanced|fluent|native|^\\s*[abc][12]\\b|low|medium|high|none|little|much|fail|pass"
-  mean(grepl(ord, lv, perl = TRUE)) >= .5
+  # a label belongs to an ordered scale when it carries a number, a language level or a grade, or when it consists
+  # (almost) only of scale words: "Strongly agree", "Very often", "Most of the time". "Never worked, but seeking a job"
+  # starts with a scale word but describes a category, so it does not count.
+  vocab <- c("never", "rarely", "seldom", "sometimes", "occasionally", "often", "frequently", "usually", "always", "ever", "hardly", "very", "strongly",
+    "agree", "disagree", "neither", "nor", "neutral", "undecided", "somewhat", "slightly", "moderately", "extremely", "quite", "fairly", "rather", "fully",
+    "completely", "partly", "partially", "mostly", "mainly", "not", "at", "all", "no", "none", "time", "times", "of", "the", "a", "an", "half", "less", "more",
+    "than", "most", "some", "little", "lot", "much", "many", "few", "satisfied", "dissatisfied", "unsatisfied", "satisfactory", "unsatisfactory", "poor",
+    "fair", "good", "very", "excellent", "bad", "average", "low", "lower", "medium", "middle", "high", "higher", "important", "unimportant", "likely",
+    "unlikely", "true", "untrue", "false", "and", "or", "to", "day", "days", "daily", "week", "weekly", "month", "monthly", "year", "yearly", "per",
+    "beginner", "intermediate", "advanced", "fluent", "native", "basic", "pass", "fail", "difficult", "easy", "agreed", "disagreed", "applicable", "occasional")
+  scale_like <- vapply(lv, function(l) {
+    if (grepl("[0-9]|^\\s*[abc][12]\\b", l, perl = TRUE, ignore.case = TRUE)) return(TRUE)
+    w <- strsplit(tolower(gsub("[^A-Za-z ]", " ", l)), "\\s+")[[1]]; w <- w[nzchar(w)]
+    length(w) > 0 && mean(w %in% vocab) >= .75 }, logical(1))
+  mean(scale_like) >= .5
 }
 
 qc_mlr_predictors <- function(data, cat, outcome, scales = list()) {

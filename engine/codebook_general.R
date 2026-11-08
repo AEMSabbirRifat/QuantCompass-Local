@@ -73,9 +73,19 @@ qc_tables_from_pdf <- function(path, known) {
   flush <- function() if (!is.null(cur)) rows[[length(rows) + 1]] <<- cur
   save_table <- function() { if (length(rows)) { m <- do.call(rbind, rows); df <- as.data.frame(m, stringsAsFactors = FALSE); names(df) <- cols$name
     tables[[length(tables) + 1]] <<- df }; rows <<- list() }
+  # running headers and footers ("Codebook - study name ... Page 3") repeat on several pages: they are not table content
+  line_key <- function(w) { w <- w[order(w$y, w$x), ]; ln <- cumsum(c(1, diff(w$y) > 3))
+    vapply(split(w$text, ln), function(z) gsub("\\s+", " ", gsub("[0-9]+", "#", paste(z, collapse = " "))), "") }
+  keys <- lapply(pages, function(w) { if (!nrow(w)) return(character()); k <- line_key(w)
+    unique(k[unique(c(1:min(2, length(k)), max(1, length(k) - 1):length(k)))]) })      # only the top and bottom lines of a page
+  kt <- table(unlist(keys)); running <- names(kt)[kt >= max(2, ceiling(length(pages) / 2)) & nchar(names(kt)) >= 8]
+  running <- running[!vapply(running, function(r) { tk <- strsplit(r, " ")[[1]]
+    any(tk %in% known) || sum(grepl(hdr_re, tolower(gsub("[^A-Za-z]", "", tk)))) >= 2 }, logical(1))]   # never a table's own column-header row
   for (w in pages) {
     if (!nrow(w)) next
     w <- w[order(w$y, w$x), ]; w$line <- cumsum(c(1, diff(w$y) > 3))
+    if (length(running)) { lk <- vapply(split(w$text, w$line), function(z) gsub("\\s+", " ", gsub("[0-9]+", "#", paste(z, collapse = " "))), "")
+      w <- w[!w$line %in% as.integer(names(lk)[lk %in% running]), ]; if (!nrow(w)) next; w$line <- cumsum(c(1, diff(w$y) > 3)) }
     hdr_line <- NA
     for (ln in unique(w$line)) { L <- w[w$line == ln, ]; low <- tolower(gsub("[^A-Za-z]", "", L$text))
       gaps <- sum((L$x[-1] - (L$x + L$width)[-nrow(L)]) > 25)
@@ -336,6 +346,12 @@ qc_cb_fit <- function(e, x, miss) {
     s <- s + .5 + if (length(obs)) 3 * mean(obs %in% allowed) else 1 }
   else if (length(e$values)) s <- s + .5 + 2 * mean(as.character(unique(x[!is.na(x)])) %in% c(names(e$values), e$missing))
   if (identical(e$kind, "text")) s <- s + .5
+  # tie-breaks between readings that fit the data equally well: a runaway label (a passage swallowed after a passing
+  # mention, e.g. "... AC04 > 1." in a methods section) and codes that never occur in the data mark the weaker reading
+  if (!is.na(e$label) && nchar(e$label) > 200) s <- s - 1
+  if (length(e$values) && is.numeric(x)) { codes <- suppressWarnings(as.numeric(names(e$values))); obs <- unique(x[!is.na(x)])
+    far <- !is.na(codes) & length(obs) > 0 & (codes > max(obs) + 1 | codes < min(obs) - 1) & !names(e$values) %in% c(e$missing, miss)
+    s <- s - .2 * mean(far) }       # unused answer options inside the range are normal; codes far outside it are not
   s
 }
 
