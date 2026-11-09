@@ -89,9 +89,15 @@ It also scores QuantCompass against a **test library** (`validation/corpus/`):
 - 17 codebook layouts - variables, labels, answer codes and missing codes 100%, filter rules found in every file that has them
 - 90 hypotheses from three invented studies, written in many styles - type, variables and direction must be right for at least 95% (currently 100%; the third study was written after the rules and scored 88% before any tuning)
 
+## Working through the app
+
+- Six numbered steps in the top bar: a green ✓ means the step is done, a dashed number means it unlocks after you confirm your final data.
+- Every step has two panes that scroll on their own, and a **Back / Continue** bar at the bottom. The bar says what is still to do in the current step; Continue stays grey until the step's required part is done. In step 3 the button confirms your data, in step 5 it runs your confirmed hypotheses.
+- The **Your selections** panel on the right lists everything chosen so far (files, exclusions, scales, groups, final cases, hypotheses, results, AI). Click a step there to jump to it; hide it with the **Summary** button.
+
 ## Optional AI help (your own key)
 
-QuantCompass works fully without AI. In the **AI help (optional)** tab you can switch on help from Google Gemini, Mistral, Anthropic Claude, any OpenAI-compatible service, the GWDG Academic Cloud (Chat AI / SAIA, available to many German universities) or Ollama on your own computer. It is only asked when QuantCompass is unsure: codebook entries it could not read, and hypotheses it could not break down with confidence.
+QuantCompass works fully without AI. The **✦ AI help** button in the top bar opens the settings: Google Gemini, Mistral, Anthropic Claude, any OpenAI-compatible service, the GWDG Academic Cloud (Chat AI / SAIA, available to many German universities) or Ollama on your own computer. The AI is never called by itself: it is asked only when you press an **Ask AI** button. Use it in step 1 when the codebook check says some variables could not be described, and in step 5 on hypothesis cards marked ⚠ Check or ? Unsure.
 
 - Sent: variable names, codebook labels and texts, your hypotheses. **Never your data values.**
 - Every AI suggestion is checked against your variables and data before you see it; impossible suggestions are dropped. You decide whether to use it.

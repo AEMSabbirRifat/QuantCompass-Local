@@ -51,7 +51,7 @@
 - **Hypotheses in any wording** (`engine/hypothesis_general.R`): normalisation + new patterns (moderation, mediation "through", comparatives, "has an effect on", "more likely to", with/without groups, men/women), before/after pairs found from labels, fallback from variable mentions, confidence badge (Sure / Check / Unsure). Unordered coded categories (gender, region) are categories everywhere and enter models as dummies (factor line in the script).
 - **Moderation analysis** (`templates/moderation.R`): centred interaction, F-change or robust Wald, simple slopes (-1 SD/mean/+1 SD or per group), expected pattern checked in the decision, simple-slopes chart, glossary, methods text.
 - **Before/after** form in the app with expected direction and one-sided option; direction checked in the decision.
-- **Optional AI help** (`engine/ai.R`, tab "AI help (optional)"): Gemini, Mistral, Claude, OpenAI-compatible (university gateways), Ollama; key per session or local `.env`; only names/labels/codebook text/hypotheses sent; every suggestion validated against the data; AI use disclosed in reports and methods.
+- **Optional AI help** (`engine/ai.R`, "✦ AI help" side panel): Gemini, Mistral, Claude, OpenAI-compatible (university gateways), Ollama; key per session or local `.env`; only names/labels/codebook text/hypotheses sent; every suggestion validated against the data; AI use disclosed in reports and methods.
 - **Test library** (`validation/corpus/`): 9 data formats, 17 codebook layouts, 90 hypotheses (3 studies; the held-out third scored 88% before tuning, 100% after general fixes). New suites: `test_corpus.R`, `test_v04.R`, `test_ai.R`. Full validation passes.
 - Browser tests: new study (moderation, before/after, dummies, chi-square, fallback) all run; N=200 walkthrough H1-H8 unchanged.
 - Real codebooks: thesis 43 vars / 3 rules (ES03 code 4 correctly flagged: not in the codebook); N=200 65 vars / 3 rules, only AC02 code 6 left for the user.
@@ -60,7 +60,15 @@
 - Desktop folder updated (58 files, checksums verified; your own extra files and results untouched).
 - GitHub QuantCompass-Local: 11 commits; validation run #44 passed. Runs #35-#43 failed only because they ran on half-uploaded states, and one real issue: the newest officer package reads Word tables differently on GitHub; Word codebooks are now read straight from the document XML, independent of the officer version.
 
+## v0.4.1 (9 Nov 2026): clearer, more professional interface
+- Numbered step bar with status (✓ done, ● to do, ○ optional, dashed = locked until the data is confirmed).
+- Every step: a short header saying what to do, two panes that scroll independently, and a fixed Back / Continue bar that says what is still missing. Continue is grey until the required part is done; in step 3 it confirms the data, in step 5 it runs the confirmed hypotheses.
+- "Your selections" panel on the right: files, codebook check, exclusions, scales, groups, final cases, hypotheses (✓ / needs a look), results, AI status; click a step to jump there; can be hidden.
+- AI help on demand: no more automatic AI calls. A ✦ AI help button in the top bar opens the settings with "when to use it"; "Ask AI" buttons on each hypothesis card, on a bar listing the unsure ones, and in the codebook step. Without a key the buttons open the settings.
+- Calmer styling (solid buttons, no glow animations), laptop-sized top bar (1024-1440 px tested), single-column fallback on small screens.
+- Tested: full browser run of all six steps using only the Back / Continue bar (1440x900 and 1280x720), AI drawer and Ask AI with a missing and an invalid key; full validation passes.
+
 ## Still open
 - validate.yml on GitHub: optionally add "curl" to the package list (tests do not need it).
-- AI help was tested offline only (fake transport); test once with a real key on the laptop (AI help tab > Test the connection).
+- AI help was tested offline only (fake transport); test once with a real key on the laptop (✦ AI help > Test the connection).
 - QuantCompass-Web still on the old engine.
