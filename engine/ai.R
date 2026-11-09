@@ -105,7 +105,8 @@ qc_ai_catalog_text <- function(cat, level_labels = list(), max_vars = 250) {
   cat <- utils::head(cat, max_vars)
   vapply(seq_len(nrow(cat)), function(i) { v <- cat$variable[i]; lv <- level_labels[[v]]
     paste0(v, " | ", substr(cat$label[i], 1, 120), " | ", cat$kind[i],
-           if (length(lv)) paste0(" | categories: ", substr(paste(names(lv), "=", lv, collapse = "; "), 1, 200)) else "") }, "")
+           if (length(lv)) paste0(" | categories: ", substr(paste(names(lv), "=", lv, collapse = "; "), 1, 200)) else "",
+           if (!is.null(cat$note) && nzchar(cat$note[i])) paste0(" | ", substr(cat$note[i], 1, 200)) else "") }, "")
 }
 
 # ---------------------------------------------------------------- 1. hypothesis breakdown
@@ -114,7 +115,10 @@ qc_ai_goal_fields <- list(relationship = c("var1", "var2"), difference = c("outc
 
 qc_ai_hyp_prompt <- function(text, cat, level_labels) {
   sys <- paste("You help students map one research hypothesis onto the variables of their own survey data set, so that a statistics program can test it.",
-    "You never compute or invent results. Use only variable names from the list. Answer with one JSON object and nothing else.")
+    "You never compute or invent results. Use only variable names from the list.",
+    "When a construct of the hypothesis is measured by several items, choose the row marked 'scale' (the score of those items), not a single item.",
+    "Name the dependent variable as outcome (or var2 for a relationship) and the independent variable as var1, group or predictors.",
+    "Answer with one JSON object and nothing else.")
   usr <- paste0("VARIABLES (name | label | kind | categories from the codebook):\n", paste(qc_ai_catalog_text(cat, level_labels), collapse = "\n"),
     "\n\nHYPOTHESIS:\n", text,
     "\n\nReturn JSON with these keys:\n",
