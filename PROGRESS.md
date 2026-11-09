@@ -76,6 +76,13 @@
 - Step 3 builds the scales the hypotheses use; step 4 runs the description and Cronbach's alpha by itself; step 5 (new) shows the assumption checks and the chosen test per hypothesis before running.
 - Tests: new suite `validation/test_measures.R` (57 checks); full validation passes. Browser runs of all six steps on the N=200 data (5 hypotheses, 168 cases, all results) and with a stand-in AI service (agree / differ / take over when unsure).
 
+## v0.6 (9 Nov 2026): AI chat on every page, codebook definitions, the user's own hypothesis count
+- AI chat (side panel tab and "Ask AI" in the top bar): explains anything, looks numbers up, and makes changes on request (codebook entries, missing codes, scales, exclusions, case IDs, hypotheses' variables, confirm, run) - checked against the data, with the user's permission (ask every time / once per task / without asking) and Undo. Data access setting: everything incl. single answers (default) or summaries only. Explain buttons next to codebook checks, scales, hypotheses, assumption checks and results; "describe it in your own words" boxes for variables and exclusion rules.
+- Codebook: codes that fit none of a column's values lose against a reading without codes (a wrapped "3 = own flat" no longer lands on age, months, page counts); labels cut at a column border are completed; numbered sub-headings end table rows. New `engine/codebook_defs.R` reads scale definitions (items, reversed items, mean/sum/WHO-5) and screening tables (with documented counts) - on the user's study the app reproduces 192 -> 184 -> 180 -> 173 -> 167 -> 164 -> 158 and alphas .85/.82/.90 exactly.
+- Hypotheses: counted as written (`qc_read_hyp_text`): H1₀ / H0₁ / "Null:" lines are the H0 of their hypothesis, wrapped lines join, a two-claim sentence stays one hypothesis (claims tested separately, shown as a group); a later claim keeps its own direction.
+- Step 2 shows for every scale how it is measured (scoring, items with wording, reversed, alpha) and lets the user drop/add/reverse items; an edited codebook scale replaces the original.
+- Tests: `validation/test_v06.R` (72 checks, synthetic data); browser run on the user's student well-being data with a stand-in AI (explain, lookup, ask/allow/undo, auto, deny, own words, full run).
+
 ## Still open
 - validate.yml on GitHub: optionally add "curl" to the package list (tests do not need it).
 - The AI assistant was tested offline only (stand-in service); test once with a real key on the laptop (step 1 AI card > Test the connection).
