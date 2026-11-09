@@ -5,7 +5,7 @@ QuantCompass computes every result in R without AI. The AI layer only **suggests
 2. breakdowns of hypotheses QuantCompass is unsure about.
 
 Providers: Google Gemini, Mistral, Anthropic Claude, OpenAI or any OpenAI-compatible endpoint, GWDG Academic Cloud (Chat AI / SAIA: https://chat-ai.academiccloud.de/v1, model list in the app), Ollama (local).
-Settings: the "AI help (optional)" tab in the app, or a local `.env` file (copy `.env.example`). Keys are never stored by the app and `.env` is git-ignored.
+Settings: the "✦ AI help" button in the app's top bar (a side panel; the AI is only called when you press an "Ask AI" button), or a local `.env` file (copy `.env.example`). Keys are never stored by the app and `.env` is git-ignored.
 
 Rules the code follows (tested in `validation/test_ai.R` with a fake transport):
 - Only variable names, codebook labels/texts and hypotheses are sent; category names only when they come from the codebook. Never data values or rows.
