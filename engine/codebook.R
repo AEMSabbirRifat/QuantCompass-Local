@@ -220,7 +220,7 @@ qc_parse_codebook_table_lines <- function(lines, known, source) {
     ln <- lines[i]
     if (i %in% hdr) { flush(); cur <- NULL; cols <- colpos(ln); next }
     if (is.null(cols) || !nzchar(trimws(ln))) { if (!nzchar(trimws(ln))) NULL; next }
-    if (grepl("^\\s*Codebook\\b|^\\s*[0-9]+\\.\\s+[A-Z]", ln)) { flush(); cur <- NULL; if (grepl("^\\s*[0-9]+\\.\\s+[A-Z]", ln)) cols <- NULL; next }
+    if (grepl("^\\s*Codebook\\b|^\\s*[0-9]+(\\.[0-9]+)*\\.?\\s+[A-Z][a-z]", ln)) { flush(); cur <- NULL; if (grepl("^\\s*[0-9]+(\\.[0-9]+)*\\.?\\s+[A-Z][a-z]", ln)) cols <- NULL; next }   # "4. Variable list", "4.4 Computed variables"
     ic <- function(pat) { k <- which(grepl(pat, cols$name)); if (length(k)) k[1] else NA }
     il <- ic("label|wording|question|description"); iv <- ic("value|code"); ivar <- 1
     nxt <- function(k) if (k < nrow(cols)) cols$start[k + 1] else NA

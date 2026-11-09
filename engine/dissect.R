@@ -289,8 +289,12 @@ qc_dissect <- function(id, text, data, cat) {
     }
     subjects <- qc_split_compound(p$a, cat); objects <- qc_split_compound(p$b, cat)
     for (sa in subjects) for (ob in objects) {
+      # a later claim can carry its own direction: "... positively related to A and negatively related to B"
+      dir_k <- p[["direction"]]
+      own <- regmatches(ob, regexec("(?i)^\\s*(?:is\\s+|are\\s+)?(positively|negatively|positive(?:ly)?|negative(?:ly)?)\\s+(?:related|associated|correlated|linked|connected)\\s+(?:to|with)\\s+", ob, perl = TRUE))[[1]]
+      if (length(own) == 2) { dir_k <- if (grepl("(?i)^pos", own[2], perl = TRUE)) "positive" else "negative"; ob <- substring(ob, nchar(own[1]) + 1) }
       a <- pick(sa); b <- pick(ob); ask_weak(a, "first construct"); ask_weak(b, "second construct")
-      spec <- list(goal = "relationship", var1 = a$best, var2 = b$best, direction = p[["direction"]])
+      spec <- list(goal = "relationship", var1 = a$best, var2 = b$best, direction = dir_k)
       ka <- cat$kind[cat$variable %in% a$best]; kb <- cat$kind[cat$variable %in% b$best]
       # a two-category variable: the relationship is a group comparison; direction becomes "which group is higher"
       if (length(ka) && ka %in% c("binary", "categorical") && !(length(kb) && kb %in% c("binary", "categorical"))) {

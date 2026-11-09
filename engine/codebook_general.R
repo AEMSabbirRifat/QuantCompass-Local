@@ -105,7 +105,10 @@ qc_tables_from_pdf <- function(path, known) {
       if (!length(z)) return((ctr[i] + ctr[i + 1]) / 2)
       runs <- split(z, cumsum(c(1, diff(z) != 1))); r <- runs[[which.max(lengths(runs))]]; mean(r) - 1 }, 0), Inf)
     for (ln in unique(body$line)) {      # a row may continue on the next page (below a repeated header)
-      L <- body[body$line == ln, ]; col <- findInterval(L$x + L$width / 2, bounds, left.open = TRUE)
+      L <- body[body$line == ln, ]; low <- tolower(gsub("[^A-Za-z]", "", L$text))
+      if ((sum(grepl(hdr_re, low)) >= 2 && mean(grepl(hdr_re, low[nzchar(low)])) >= .5) ||
+          grepl("^[0-9]+(\\.[0-9]+)*\\.?$", L$text[1]) && length(L$text) >= 2 && grepl("^[A-Z][a-z]", L$text[2])) { flush(); cur <- NULL; next }   # a new header or "4.2 Screening ..."
+      col <- findInterval(L$x + L$width / 2, bounds, left.open = TRUE)
       txt <- tapply(L$text, col, function(z) paste(z, collapse = " "))
       first <- if ("1" %in% names(txt)) trimws(txt[["1"]]) else ""
       if (nzchar(first) && sub("\\s.*$", "", first) %in% known) { flush(); cur <- stats::setNames(rep("", nrow(cols)), cols$name) }
@@ -343,7 +346,10 @@ qc_cb_fit <- function(e, x, miss) {
   if (length(e$values) && is.numeric(x)) { obs <- unique(x[!is.na(x)]); obs <- obs[!obs %in% suppressWarnings(as.numeric(c(e$missing, miss)))]
     codes <- suppressWarnings(as.numeric(names(e$values)))
     allowed <- if (e$kind == "range") seq(min(codes), max(codes)) else codes
-    s <- s + .5 + if (length(obs)) 3 * mean(obs %in% allowed) else 1 }
+    cov <- if (length(obs)) mean(obs %in% allowed) else 1
+    # codes that describe hardly any of the values in the data belong to another question (e.g. a wrapped line of the
+    # next variable): such a reading is worse than a reading with no codes at all
+    s <- s + if (cov < .5 && length(obs) >= 3) -1 + cov else .5 + 3 * cov }
   else if (length(e$values)) s <- s + .5 + 2 * mean(as.character(unique(x[!is.na(x)])) %in% c(names(e$values), e$missing))
   if (identical(e$kind, "text")) s <- s + .5
   # tie-breaks between readings that fit the data equally well: a runaway label (a passage swallowed after a passing
@@ -355,6 +361,21 @@ qc_cb_fit <- function(e, x, miss) {
   s
 }
 
+# a label cut at a column border ("I worry about having enough my rent and bills.") is replaced by another reading of
+# the same label that contains every word of it in order plus the lost words, as long as the extra words are not the
+# next columns (level, values, file notes) spilling into the label
+qc_label_complete <- function(lab, alts) {
+  w <- function(x) strsplit(tolower(gsub("[^[:alnum:]' -]", " ", x)), "\\s+")[[1]] |> (\(z) z[nzchar(z)])()
+  base <- w(lab); best <- lab
+  for (a in alts[nchar(alts) > nchar(lab) & nchar(alts) < 3 * nchar(lab) + 40]) {
+    aw <- w(a); i <- 1; for (x in aw) if (i <= length(base) && x == base[i]) i <- i + 1
+    if (i <= length(base)) next                                     # not every word of the label, in order
+    extra <- aw[!seq_along(aw) %in% match(base, aw)]
+    if (any(grepl("^(ratio|interval|ordinal|nominal|binary|datetime|metric|numeric|raw|clean|pt|text|integer|decimal|likert|[0-9]+-pt)$", extra))) next
+    if (nchar(a) > nchar(best)) best <- a }
+  best
+}
+
 qc_cb_merge <- function(cands, data, source, extra_rules = list(), global_missing = character()) {
   cands <- Filter(function(c) !is.null(c) && length(c$vars), cands)
   vars <- list(); used <- character()
@@ -364,9 +385,10 @@ qc_cb_merge <- function(cands, data, source, extra_rules = list(), global_missin
     l <- unlist(lapply(es, `[[`, "label")); l <- l[!is.na(l) & nzchar(l)]
     if (is.na(best$label) || !nzchar(best$label)) { if (length(l)) best$label <- l[which.max(nchar(l))] }
     else { short <- l[nchar(l) < nchar(best$label) - 3 & startsWith(tolower(best$label), tolower(l)) & nchar(l) >= 4]
-      spill <- vapply(short, function(z) grepl("(?i)^\\s*[(\u00b7]?\\s*(numeric|ordinal|nominal|categorical|text|string|integer|decimal|likert|metric|binary|dichotomous|p\\.\\s*[0-9]|page\\s*[0-9]|\u00b7)",
+      spill <- vapply(short, function(z) grepl("(?i)^\\s*[(\u00b7]?\\s*(numeric|ordinal|nominal|categorical|text|string|integer|decimal|likert|metric|binary|dichotomous|ratio|interval|datetime|date|id\\b|p\\.\\s*[0-9]|page\\s*[0-9]|\u00b7)",
                                                substring(best$label, nchar(z) + 1), perl = TRUE), logical(1))
       short <- short[spill]; if (length(short)) best$label <- short[which.max(nchar(short))] }
+    if (!is.na(best$label) && nzchar(best$label)) best$label <- qc_label_complete(best$label, l)
     if (is.na(best$question)) { q <- unlist(lapply(es, `[[`, "question")); q <- q[!is.na(q)]; if (length(q)) best$question <- q[1] }
     if (is.na(best$page)) { pg <- unlist(lapply(es, `[[`, "page")); pg <- pg[!is.na(pg)]; if (length(pg)) best$page <- pg[1] }
     best$missing <- unique(c(best$missing, unlist(lapply(es, `[[`, "missing"))))
@@ -450,7 +472,13 @@ qc_read_any_codebook <- function(path, data = NULL) {
       gm <- unique(c(qc_global_missing(qc_codes_norm(c(lines, unlist(lapply(ex$tables, function(t) unlist(t))))))))
       extra <- c(if (length(lines)) qc_parse_documented_rules(lines, known) else list(),
                  unlist(lapply(lines[grepl("(?i)\\bif\\b.*(skipped|not shown|not asked|survey ends|screen-?out)", lines, perl = TRUE)], qc_rules_from_text, subject = NULL, known = known), recursive = FALSE))
-      qc_cb_merge(cands, data, src, extra, gm)
+      res0 <- qc_cb_merge(cands, data, src, extra, gm)
+      # written definitions: how scales are scored and how the sample was screened
+      al <- c(lines, unlist(lapply(ex$tables, function(t) if (is.data.frame(t) && nrow(t)) apply(as.matrix(t), 1, function(r) paste(r[!is.na(r) & nzchar(r)], collapse = "   ")) else character())))
+      res0$scale_defs <- tryCatch(qc_cb_scale_defs(al, known, res0, data), error = function(e) list())
+      res0$screening <- tryCatch(qc_cb_screening(al, known), error = function(e) list())
+      res0$lines <- utils::head(al[nzchar(trimws(al))], 4000)                # for the assistant's codebook search
+      res0
     }
   }, error = function(e) list(vars = list(), rules = list(), source = src, problems = paste("The codebook could not be read:", conditionMessage(e))))
   if (is.null(res) || !length(res$vars)) {

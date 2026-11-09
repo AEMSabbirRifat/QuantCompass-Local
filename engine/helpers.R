@@ -26,7 +26,7 @@ qc_shapiro <- function(y) {
     list(W = unname(s$statistic), p = s$p.value)
   } else list(W = NA, p = NA)
 }
-qc_session <- function() list(engine = "QuantCompass engine 0.5.0",
+qc_session <- function() list(engine = "QuantCompass engine 0.6.0",
                               r_version = R.version.string, date = format(Sys.Date()))
 # Friendly names for variables and categories (set by QuantCompass; empty = use column names)
 qc_lab <- function(v) {

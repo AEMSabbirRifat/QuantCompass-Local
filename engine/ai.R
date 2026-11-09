@@ -47,10 +47,12 @@ qc_ai_config <- function(provider = NULL, model = "", key = "", base_url = "", e
        ready = nzchar(key) || identical(pr$style, "ollama"))
 }
 
-qc_ai_notice <- function(cfg) sprintf(paste(
-  "You are interacting with an AI system (%s, model %s) when this is switched on.",
-  "QuantCompass sends it only your variable names, codebook labels and texts, and your hypotheses - never your data values.",
-  "The AI only suggests; every suggestion is checked against your variables and you decide whether to use it. All statistics are computed in R."), cfg$label, cfg$model)
+qc_ai_notice <- function(cfg, access = "full") sprintf(paste(
+  "You are interacting with an AI system (%s, model %s).",
+  "It reads your codebook, your hypotheses and the state of your project%s.",
+  "It suggests; every change is checked against your data and needs your OK (see the permission setting in the AI chat), and it can be undone.",
+  "All statistics are computed in R, never by the AI."), cfg$label, cfg$model,
+  if (identical(access, "summaries")) ", plus summaries of your data (counts, means, results) - never single answers" else ", plus your data (summaries, and single answers when it needs to look something up)")
 
 # ---------------------------------------------------------------- transport
 # One HTTPS POST. Tests replace it with options(qc.ai.transport = function(url, headers, body) "...").

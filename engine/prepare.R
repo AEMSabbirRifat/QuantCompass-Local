@@ -62,6 +62,20 @@ qc_exclusion_suggestions <- function(data, cb) {
         sprintf("%s asks respondents to choose '%s'. Any other answer, or no answer, fails the check.", a$variable, a$answer))
   if ("TIME_RSI" %in% names(data)) add("speeders", "speeders (relative speed index 2 or higher)", 'data[["TIME_RSI"]] >= 2', FALSE,
       "TIME_RSI of 2 or more means the respondent was at least twice as fast as typical (Leiner, 2019). Optional - off by default; switch it on if your codebook or method says so.")
+  # the codebook's own screening table comes first, in its order; built-in steps on the same variables are then not needed
+  sc <- cb$screening$steps
+  if (length(sc)) {
+    cstep <- list(); covered <- character()
+    for (k in seq_along(sc)) { s <- sc[[k]]; if (is.na(s$cond)) next
+      covered <- c(covered, s$vars)
+      cstep[[length(cstep) + 1]] <- list(id = paste0("codebook_", k), label = sprintf("%s (keep: %s)", s$label, s$keep_text), cond = s$cond, on = TRUE,
+        reason = sprintf("From your codebook's screening table: %s - keep cases with %s.%s", s$label, s$keep_text,
+                         if (!is.na(s$removed)) sprintf(" The codebook removes %d case(s) at this step.", s$removed) else ""),
+        documented = s$removed, from = "codebook") }
+    vars_of <- function(st) gsub('data\\[\\["|"\\]\\]', "", regmatches(st$cond, gregexpr('data\\[\\["[^"]+"\\]\\]', st$cond))[[1]])
+    rest <- Filter(function(st) !any(vars_of(st) %in% covered), steps)
+    steps <- c(cstep, rest)
+  }
   steps
 }
 

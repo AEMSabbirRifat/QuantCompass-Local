@@ -330,3 +330,43 @@ qc_nominal_coded <- function(vars, data) {
 }
 qc_model_vars <- function(spec) unique(c(spec$predictors, spec$controls, if (identical(spec$goal, "moderation")) c(spec$moderator, spec$var1)))
 qc_as_factors <- function(data, spec) { for (v in qc_nominal_coded(qc_model_vars(spec), data)) data[[v]] <- factor(data[[v]]); data }
+
+# ---------------------------------------------------------------- reading the hypotheses the user pasted
+# One hypothesis per ID (H1, H2a, 1., 1) ...). The user's own count is kept: null hypotheses written next to them
+# (H1₀, H0₁, H01 next to H1, "H0:", "Null hypothesis: ...") belong to their hypothesis and are not new hypotheses,
+# subscript ₁ / "a" markers of research hypotheses are dropped, and lines without an ID continue the previous one.
+qc_read_hyp_text <- function(txt) {
+  ln <- trimws(strsplit(gsub("\r", "", txt %||% ""), "\n")[[1]]); ln <- ln[nzchar(ln)]
+  ln <- sub("^[*•–—-]+\\s*", "", ln)
+  sub_digit <- c("₀" = "0", "₁" = "1", "₂" = "2", "₃" = "3", "₄" = "4", "₅" = "5", "₆" = "6", "₇" = "7", "₈" = "8", "₉" = "9")
+  out <- list(); nulls <- list(); notes <- character()
+  id_re <- "^(?i)(H|Hyp(?:othesis)?\\s*)?((?:[0-9₀-₉]+|[A-Za-z])(?:[._ ]?[0-9a-z₀-₉]+)*)\\s*[:.)–-]\\s+"
+  has_ids <- any(vapply(ln, function(l) { m <- regmatches(l, regexec(id_re, l, perl = TRUE))[[1]]; length(m) == 3 && (nzchar(m[2]) || grepl("^[0-9]+$", m[3])) }, logical(1)))
+  for (l in ln) {
+    if (grepl("(?i)^(null hypothesis|H\\s*[0₀]|H_0)\\s*[:.)-]", l, perl = TRUE) && !grepl("(?i)^H\\s*0[0-9]", l, perl = TRUE)) {   # "H0: ..." belongs to the previous hypothesis
+      if (length(out)) nulls[[names(out)[length(out)]]] <- sub("^[^:.)-]+[:.)-]\\s*", "", l); next }
+    m <- regmatches(l, regexec(id_re, l, perl = TRUE))[[1]]
+    hasH <- length(m) == 3 && nzchar(m[2])
+    numbered <- length(m) == 3 && !hasH && grepl("^[0-9]+$", m[3])            # "1. ..." / "2) ..."
+    if (!(hasH || numbered)) {
+      if (has_ids && length(out) && !grepl("(?i)^(hypothes[ie]s|research questions?)\\s*:?$", l, perl = TRUE)) out[[length(out)]] <- paste(out[[length(out)]], l)   # a wrapped line
+      else if (!grepl("(?i)^(hypothes[ie]s|research questions?)\\b.{0,30}:?$", l, perl = TRUE) || nchar(l) > 60) out[[paste0("H", length(out) + 1)]] <- l
+      next }
+    raw <- m[3]; body <- substring(l, nchar(m[1]) + 1)
+    s <- raw; for (k in names(sub_digit)) s <- gsub(k, paste0("~", sub_digit[[k]]), s, fixed = TRUE)   # subscripts marked with ~
+    s <- gsub("[._ ]", "", s)
+    lead0 <- grepl("^~0", s); s <- sub("^~[01](?=[0-9])", "", s, perl = TRUE)          # subscript first: H₀1 / H₁1
+    is_null <- lead0 || grepl("~0$", s) || (hasH && grepl("^0~?[1-9]", s)) || (hasH && grepl("^0[0-9]+[a-z]?$", s) && length(out) && any(sub("^H", "", names(out)) == sub("^0", "", s)))
+    s <- sub("~[0-9]$", "", s); s <- gsub("~", "", s)
+    if (is_null) { tgt <- paste0("H", sub("^0", "", s)); if (!tgt %in% names(out) && length(out)) tgt <- names(out)[length(out)]
+      if (length(out)) nulls[[tgt]] <- body; next }
+    s <- sub("^(?i)a(?=[0-9])", "", s, perl = TRUE)                              # "Ha1" / "HA1" research hypothesis
+    id <- paste0("H", tolower(s)); id <- sub("^H([0-9]+)([a-z])$", "H\\1\\2", id)
+    if (id %in% names(out)) { k <- 2; while (paste0(id, "_", k) %in% names(out)) k <- k + 1; id <- paste0(id, "_", k)
+      notes <- c(notes, sprintf("Two hypotheses were labelled %s; the second one is called %s.", sub("_[0-9]+$", "", id), id)) }
+    out[[id]] <- body
+  }
+  if (length(nulls)) notes <- c(notes, sprintf("Your null hypothes%s (%s) %s kept as the H0 of %s - not as extra hypotheses.",
+    if (length(nulls) == 1) "is" else "es", paste(names(nulls), collapse = ", "), if (length(nulls) == 1) "is" else "are", if (length(nulls) == 1) "its hypothesis" else "their hypotheses"))
+  list(hyps = unlist(out), nulls = unlist(nulls), notes = notes)
+}

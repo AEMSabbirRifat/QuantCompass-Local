@@ -48,11 +48,24 @@ qc_measure_candidates <- function(data, cb = NULL, labels = list(), taken = name
     nn <- x[!is.na(x)]; k <- codes_of(v); if (!is.null(e) && length(e$values) && length(k) >= 2) nn <- nn[nn >= min(k) & nn <= max(k)]   # missing codes like -9 are not answers
     length(nn) >= 5 && all(nn == round(nn)) && length(unique(nn)) >= 3 && length(unique(nn)) <= 11 && (max(nn) - min(nn)) <= 10 }, logical(1))
   vs <- names(data)[likert]; if (length(vs) < 2) return(list())
-  key <- vapply(vs, function(v) { k <- qc_construct_of(lab_of(v)); if (is.na(k)) paste0("#stem:", sub("_[0-9]+$", "", v)) else k }, "")
-  out <- list()
+  # 1. scales the codebook defines in words (items, reversed items, scoring) - these are not guessed
+  out <- list(); defined <- character()
+  for (d in (if (!is.null(cb)) cb$scale_defs else NULL)) {
+    if (!all(d$items %in% names(data))) next
+    k <- codes_of(d$items[1])
+    auto_rev <- tryCatch(qc_reverse_suggest(data, d$items), error = function(e) character())
+    nm <- if (!is.na(d$code) && !d$code %in% taken) d$code else NA
+    out[[length(out) + 1]] <- list(name = nm, label = d$label, items = d$items, method = d$method, min = min(k), max = max(k),
+      text = paste(vapply(d$items, function(v) qc_item_text(lab_of(v)), ""), collapse = " / "), source = "codebook", code = d$code, reverse_fixed = d$reverse,
+      reverse_note = setdiff(auto_rev, d$reverse), preset = if (identical(d$method, "who5")) "who5" else NA)
+    defined <- c(defined, d$items) }
+  vs <- setdiff(vs, defined)
+  # 2. items under the same codebook heading, or with the same name stem (FC01, FC02 ... / X_01, X_02 ...)
+  stem_of <- function(v) sub("_?[0-9]+$", "", v)
+  key <- vapply(vs, function(v) { k <- qc_construct_of(lab_of(v)); if (is.na(k)) paste0("#stem:", stem_of(v)) else k }, "")
   for (k in unique(key[duplicated(key)])) {
     it <- vs[key == k]
-    if (startsWith(k, "#stem:") && !all(grepl("_[0-9]+$", it))) next           # a stem group needs numbered items (X_01, X_02 ...)
+    if (startsWith(k, "#stem:") && !all(grepl("^[A-Za-z][A-Za-z_]*?_?[0-9]+$", it))) next   # a stem group needs numbered items (X_01, X01 ...)
     cs <- vapply(it, function(v) { e <- e_of(v); paste(c(codes_of(v), if (!is.null(e)) c(e$kind, length(e$values) > 0, if (identical(e$kind, "codes")) tolower(unname(e$values)))), collapse = ",") }, "")   # answer labels must match too
     modal <- names(sort(table(cs), decreasing = TRUE))[1]; it <- it[cs == modal]
     if (length(it) < 2) next
@@ -65,6 +78,7 @@ qc_measure_candidates <- function(data, cb = NULL, labels = list(), taken = name
   }
   # codebook presets (e.g. WHO-5) win when they describe the same items
   sg <- if (!is.null(cb)) tryCatch(qc_scale_suggestions(cb, data), error = function(e) list()) else list()
+  sg <- Filter(function(s) !any(s$items %in% defined), sg)
   for (s in sg) { j <- which(vapply(out, function(o) setequal(o$items, s$items), logical(1)))
     if (length(j) && !is.na(s$preset)) { out[[j]]$method <- s$method; out[[j]]$preset <- s$preset; out[[j]]$name <- s$name }
     else if (!length(j) && all(s$items %in% vs) && !any(vapply(out, function(o) length(intersect(o$items, s$items)) > 0, logical(1))))
@@ -73,6 +87,11 @@ qc_measure_candidates <- function(data, cb = NULL, labels = list(), taken = name
   used <- taken
   for (i in seq_along(out)) { o <- out[[i]]
     if (is.na(o$name)) o$name <- qc_snake(o$label, used); used <- c(used, o$name)
+    if (identical(o$source, "codebook")) {
+      o$reverse <- o$reverse_fixed
+      o$why <- paste0(sprintf("Defined in your codebook: %s of %s", switch(o$method, sum = "sum", who5 = "WHO-5 index (raw sum x 4, 0-100)", "mean"), paste(ifelse(o$items %in% o$reverse, paste0(o$items, " (reversed)"), o$items), collapse = ", ")),
+        if (length(o$reverse_note)) sprintf(". Note: in your answers %s also run%s the other way - check whether %s reverse-keyed", paste(o$reverse_note, collapse = ", "), if (length(o$reverse_note) == 1) "s" else "", if (length(o$reverse_note) == 1) "it is" else "they are") else "", ".")
+      out[[i]] <- o; next }
     o$reverse <- if (identical(o$method, "who5")) character() else qc_reverse_suggest(data, o$items)
     o$why <- paste0(sprintf("%d items with the same answer scale (%s-%s)%s", length(o$items), qc_fmt_num(o$min), qc_fmt_num(o$max),
         if (!grepl("^[A-Za-z]+[0-9]*$", o$label) || !is.null(cb)) sprintf(" under the heading '%s'", o$label) else ""),
@@ -156,3 +175,10 @@ qc_prefer_scales <- function(spec, scales) {
   if (anyDuplicated(stats::na.omit(used))) return(spec)
   spec
 }
+
+# Cronbach's alpha of a scale straight from the item columns (reversed items recoded here).
+qc_scale_alpha_raw <- function(data, s) {
+  d <- data; for (v in intersect(s$reverse, s$items)) d[[paste0(v, "_r")]] <- (s$min %||% 1) + (s$max %||% 5) - d[[v]]
+  qc_scale_alpha(d, s)
+}
+qc_method_text <- function(m) c(mean = "mean", sum = "sum", who5 = "WHO-5 index (raw sum x 4, 0-100)")[[m %||% "mean"]]
