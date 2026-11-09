@@ -45,10 +45,24 @@ ui <- navbarPage(
     div(id = "qc-tools", class = "qc-tools",
       tags$button(type = "button", class = "qc-chip", id = "qc-ai-chip", `data-bs-toggle` = "offcanvas", `data-bs-target` = "#qc-ai",
         title = "Connect your own AI key: the AI then reads your codebook and recommends variables and scales for every hypothesis", uiOutput("ai_chip", inline = TRUE)),
-      tags$button(type = "button", class = "qc-chip qc-chip-plain", id = "qc-sum-toggle", title = "Show or hide the summary panel", "Summary")),
+      tags$button(type = "button", class = "qc-chip qc-chip-ask", id = "qc-ask-btn", title = "Ask the AI assistant anything about your data, hypotheses, tests or results - or tell it what to change",
+        onclick = "QC.panel('chat')", span(class = "qc-ai-ico", "\u2726"), "Ask AI"),
+      tags$button(type = "button", class = "qc-chip qc-chip-plain", id = "qc-sum-toggle", title = "Show or hide the side panel", "Summary")),
     ai_drawer),
   footer = tagList(
-    tags$aside(id = "qc-summary", class = "qc-summary", div(class = "qs-title", "Your selections", span(class = "qs-sub", "click a step to go there")), uiOutput("qc_summary")),
+    tags$aside(id = "qc-summary", class = "qc-summary",
+      div(class = "qs-tabs", tags$button(type = "button", class = "qs-tab active", id = "qs-tab-sel", onclick = "QC.panel('sel')", "Your selections"),
+        tags$button(type = "button", class = "qs-tab", id = "qs-tab-chat", onclick = "QC.panel('chat')", span(class = "qc-ai-ico", "\u2726"), " AI chat")),
+      div(id = "qs-sel", class = "qs-pane", div(class = "qs-sub mb-2", "Everything chosen so far - click a step to go there."), uiOutput("qc_summary")),
+      div(id = "qs-chat", class = "qs-pane qc-chat",
+        div(class = "qc-chat-head", uiOutput("chat_status"),
+          div(class = "qc-chat-set", selectInput("chat_mode", NULL, stats::setNames(names(qc_assist_modes), qc_assist_modes), "ask", width = "100%"),
+            selectInput("chat_access", NULL, stats::setNames(names(qc_assist_access), paste("AI sees:", qc_assist_access)), "full", width = "100%"))),
+        div(id = "qc-chat-msgs", class = "qc-chat-msgs", uiOutput("chat_msgs")),
+        div(class = "qc-chat-in", uiOutput("chat_chips"),
+          tags$textarea(id = "qc-chat-text", class = "form-control", rows = 3, placeholder = "Ask anything - 'explain my codebook check', 'break down H2', 'what does p = .03 mean?' - or tell me what to change, e.g. 'use the codebook's scales for all hypotheses'."),
+          div(class = "d-flex justify-content-between align-items-center mt-1", span(class = "small text-muted", "Enter = send \u00b7 Shift+Enter = new line"),
+            tags$button(type = "button", class = "btn btn-ai btn-sm", onclick = "QC.send()", "Send"))))),
     div(id = "qc-footer", class = "qc-footer", uiOutput("qc_footer"))),
 
   step_tab(1, "Load your data file and, if you have it, the codebook. Connect the AI assistant here: it then helps you on every page.",
@@ -91,7 +105,7 @@ server <- function(input, output, session) {
     labels = list(), level_labels = list(), accept_na = character(), fixes_nocb = character(),
     excl = list(), rb_decisions = list(), rb_done = FALSE, hint_excl = character(), manual = data.frame(id = character(), reason = character()),
     scales = list(), groups = list(), locked = FALSE, final = NULL, saved = NULL,
-    parts = list(), hyps = list(), results = NULL, desc = NULL, breakdowns = list(), ran_hyps = NULL, rel = NULL, seen = "s1", cb_ai_done = FALSE)
+    parts = list(), hyps = list(), results = NULL, desc = NULL, breakdowns = list(), ran_hyps = NULL, rel = NULL, seen = "s1", cb_ai_done = FALSE, chat = list(), undo_last = NULL, user_h0 = list(), hyp_notes = character())
 
   # ======================================================================= 1. data & codebook
   observeEvent(input$file, {
@@ -146,7 +160,8 @@ server <- function(input, output, session) {
         tags$thead(tags$tr(tags$th(""), tags$th("Variable"), tags$th("Label"), tags$th("Codes"), tags$th("Check"))),
         tags$tbody(lapply(order(match(ch$status, c("warn", "missing", "ok"))), function(i) tags$tr(class = paste0("row-", ch$status[i]),
           tags$td(sym(ch$status[i])), tags$td(tags$code(ch$variable[i])), tags$td(if (is.na(ch$label[i])) "" else ch$label[i]),
-          tags$td(class = "small", ch$values[i]), tags$td(class = "small", ch$message[i])))))))
+          tags$td(class = "small", ch$values[i]), tags$td(class = "small", ch$message[i],
+            if (ch$status[i] != "ok") tags$a(href = "#", class = "qc-ask-link", onclick = sprintf("QC.ask(%s); return false;", jsonlite::toJSON(sprintf("Explain the codebook check for %s in simple words and tell me what I should do.", ch$variable[i]), auto_unbox = TRUE)), " \u2726 Explain"))))))))
   })
   observeEvent(input$accept_na, ignoreNULL = FALSE, { if (is.null(rv$cb)) return()
     new <- if (is.null(input$accept_na)) character() else input$accept_na; if (identical(sort(new), sort(rv$accept_na))) return()
@@ -181,7 +196,10 @@ server <- function(input, output, session) {
   output$excl_ui <- renderUI({ req(rv$raw)
     if (!length(rv$excl)) return(note("No exclusion rules were found (no completion flag, screening rule or attention check)."))
     tagList(lapply(rv$excl, function(x) div(class = "excl", checkboxInput(paste0("ex_", x$id), tags$b(qc_cap_first(x$label)), value = isTRUE(x$on)), note(x$reason))),
-      uiOutput("excl_flow")) })
+      uiOutput("excl_flow"),
+      div(class = "qc-say", tags$label(class = "small text-muted", `for` = "qc-say-excl", "Another rule? Describe it in your own words - the AI assistant sets it up:"),
+        div(class = "d-flex gap-2", tags$input(type = "text", class = "form-control form-control-sm", id = "qc-say-excl", placeholder = "e.g. remove everyone who answered faster than 3 minutes"),
+          tags$button(type = "button", class = "btn btn-ai-outline btn-sm", onclick = "QC.askFrom('qc-say-excl', 'Add an exclusion step: ')", "\u2726 Set it up")))) })
   base_res <- reactive({ req(rv$raw); p <- prep_obj(manual = data.frame(id = character(), reason = character()), scales = list(), groups = list())
     tryCatch(qc_apply_prep(rv$raw, p), error = function(e) NULL) })
   output$excl_flow <- renderUI({ r <- base_res(); req(r); div(class = "flow", lapply(r$flow, div)) })
@@ -388,7 +406,9 @@ server <- function(input, output, session) {
   cands <- reactive({ req(rv$raw); d <- base_res()$data
     taken <- c(names(d), vapply(rv$scales, `[[`, "", "name"), vapply(rv$groups, `[[`, "", "name"))
     cs <- tryCatch(qc_measure_candidates(d, rv$cb, rv$labels, taken), error = function(e) list())
-    Filter(function(c0) !any(vapply(rv$scales, function(s) setequal(s$items, c0$items), logical(1))), cs) })
+    own <- vapply(rv$scales, `[[`, "", "name")
+    Filter(function(c0) !any(vapply(rv$scales, function(s) setequal(s$items, c0$items) || identical(s$name, c0$name), logical(1))) &&
+                        !(identical(c0$source, "codebook") && isTRUE(c0$code %in% own)), cs) })       # a codebook scale you edited is replaced by your version
   wscales <- reactive(c(rv$scales, cands()))
   wdata <- reactive({ req(rv$raw); r <- tryCatch(qc_apply_prep(rv$raw, prep_obj()), error = function(e) NULL)
     qc_measure_data(if (is.null(r)) base_res()$data else r$data, cands()) })
@@ -406,6 +426,9 @@ server <- function(input, output, session) {
                   "Association between two categories" = "association", "Prediction (multiple regression)" = "prediction",
                   "Scale reliability (Cronbach's alpha)" = "reliability")
   role_fields <- c("var1", "var2", "outcome", "group", "mediator", "moderator")
+  # a sentence with two claims stays ONE hypothesis: its claims H4(i), H4(ii) are tested separately but counted once
+  hyp_base <- function(id) sub("\\((i|ii|iii|iv|v|vi|vii|viii)\\)$", "", id)
+  n_hyp_of <- function(ids) length(unique(vapply(ids, hyp_base, "")))
   new_uid <- function() paste0("u", paste(sample(c(letters, 0:9), 8, TRUE), collapse = ""))
   keep <- function(id, default) { v <- isolate(input[[id]]); if (is.null(v)) default else v }   # what you clicked survives a redraw
 
@@ -413,9 +436,9 @@ server <- function(input, output, session) {
       tags$button(type = "button", class = "btn btn-primary", onclick = nav_js("s1"), "Go to step 1"))))
     split2(tagList(
       card(h5("Your hypotheses"), note("One per line, as written in your thesis, e.g. 'H1: Higher financial stress is associated with lower well-being.'"),
-        textAreaInput("htexts", NULL, rows = 8, placeholder = "H1: ...\nH2a: ...\nH2b: ..."),
+        textAreaInput("htexts", NULL, rows = 8, placeholder = "H1: Higher financial strain is associated with lower well-being.\nH2: ...\n\nYou may paste H1\u2080 / H0 lines too: they are kept as the null hypothesis, never counted as extra hypotheses."),
         actionButton("dissect", "Recommend variables", class = "btn-primary"),
-        uiOutput("hyp_ai_note"),
+        uiOutput("hyp_read_note"), uiOutput("hyp_ai_note"),
         tags$details(class = "mt-2", tags$summary("Or upload a sheet (columns 'ID' and 'Hypothesis')"), fileInput("hfile", NULL, accept = c(".xlsx", ".csv"), buttonLabel = "Upload sheet..."))),
       card(h5("Confirmed"), uiOutput("confirmed_ui")),
       card(tags$details(tags$summary(tags$b("Plan a multiple regression (advanced)")), note("Pick the outcome (dependent variable). QuantCompass then checks every other variable as a possible predictor. Choose predictors from your theory: the correlation with the outcome is shown only for information."),
@@ -435,9 +458,17 @@ server <- function(input, output, session) {
       for (pp in b$parts) { sp <- qc_prefer_scales(pp$spec, wscales())
         parts[[length(parts) + 1]] <- list(id = pp$id, uid = new_uid(), text = b$text, spec = sp, phrases = pp$phrases, questions = b$questions,
           expected = tryCatch(qc_expected_text(sp, cat0), error = function(e) pp$expected %||% ""), confidence_label = pp$confidence_label %||% NA) } }
+    for (k in seq_along(parts)) parts[[k]]$user_h0 <- rv$user_h0[[hyp_base(parts[[k]]$id)]] %||% ""
     for (k in seq_along(parts)) if (any(is.na(unlist(parts[[k]]$spec[intersect(names(parts[[k]]$spec), role_fields)])))) parts[[k]]$confidence_label <- "low"
     rv$parts <- parts
     if (!is.null(ai_cfg())) ask_ai(seq_along(parts), quiet = TRUE) }
+  add_parts <- function(H, at = NULL) { qc_set_labels(wctx()); qc_dissect_scales$scales <- wscales(); d <- wdata(); cat0 <- wcat()
+    B <- qc_dissect_all(H, d, cat0); new <- list()
+    for (b in B) { if (!length(b$parts)) new[[length(new) + 1]] <- list(id = b$id, uid = new_uid(), text = b$text, spec = list(goal = "relationship", var1 = NA, var2 = NA), phrases = list(), questions = b$questions, expected = "", confidence_label = "low")
+      for (pp in b$parts) { sp <- qc_prefer_scales(pp$spec, wscales())
+        new[[length(new) + 1]] <- list(id = pp$id, uid = new_uid(), text = b$text, spec = sp, phrases = pp$phrases, questions = b$questions,
+          expected = tryCatch(qc_expected_text(sp, cat0), error = function(e) ""), confidence_label = pp$confidence_label %||% NA) } }
+    ps <- rv$parts; if (is.null(at) || is.na(at) || at > length(ps)) ps <- c(ps, new) else ps <- append(ps, new, after = at - 1); rv$parts <- ps }
   # ---- the AI reads every hypothesis once it is connected (and again when you ask)
   ask_ai <- function(ks, quiet = FALSE) { cfg <- ai_cfg()
     if (is.null(cfg)) { if (!quiet) open_ai("Connect the AI assistant first: choose a provider and paste your key."); return() }
@@ -453,7 +484,11 @@ server <- function(input, output, session) {
     rv$parts <- ps }
   open_ai <- function(msg = NULL) { session$sendCustomMessage("qc_open_ai", list()); if (!is.null(msg)) showNotification(msg, type = "warning", duration = 8) }
   observeEvent(input$pt_ask_ai, ask_ai(input$pt_ask_ai))
-  observeEvent(input$dissect, { req(nzchar(input$htexts)); start_breakdown(read_hyp_lines(input$htexts)) })
+  observeEvent(input$dissect, { req(nzchar(input$htexts)); r <- qc_read_hyp_text(input$htexts)
+    if (!length(r$hyps)) { showNotification("No hypotheses found. Write one per line, e.g. 'H1: ...'.", type = "warning"); return() }
+    rv$user_h0 <- as.list(r$nulls); rv$hyp_notes <- c(sprintf("%d hypothes%s read: %s.", length(r$hyps), if (length(r$hyps) == 1) "is" else "es", paste(names(r$hyps), collapse = ", ")), r$notes)
+    start_breakdown(r$hyps) })
+  output$hyp_read_note <- renderUI({ n <- rv$hyp_notes; if (!length(n)) return(NULL); div(class = "small mt-2 qc-readnote", lapply(n, div)) })
   observeEvent(input$hfile, { x <- tryCatch(if (grepl("xlsx$", input$hfile$name)) as.data.frame(readxl::read_excel(input$hfile$datapath)) else utils::read.csv(input$hfile$datapath, check.names = FALSE), error = function(e) NULL)
     req(x); nm <- tolower(names(x)); i1 <- grep("^id", nm)[1]; i2 <- grep("hypothes", nm)[1]
     if (is.na(i2)) { showNotification("The sheet needs a column called 'Hypothesis'.", type = "error"); return() }
@@ -510,8 +545,48 @@ server <- function(input, output, session) {
         choiceNames = c(lapply(opts, function(v) span(class = "qc-opt", span(class = "qc-opt-name", lab_ui(v, L)), badges(v), span(class = "qc-opt-desc", var_desc(v)))),
                         list(span(class = "qc-opt", span(class = "qc-opt-name", "None of these — I choose my own column(s)")))),
         choiceValues = c(opts, "__own")),
+      lapply(opts, function(v) { s <- sc_of(v); if (is.null(s)) return(NULL)
+        conditionalPanel(sprintf("input['%s'] == '%s'", pid("pick"), v), measure_panel(s, sprintf("%s_m_%s", pid("x"), v), pt$id)) }),
       conditionalPanel(sprintf("input['%s'] == '__own'", pid("pick")),
-        selectizeInput(pid("own"), "Your column(s): one column, or several items to build a scale from them", allv, selected = keep(pid("own"), NULL), multiple = TRUE, options = list(placeholder = "Type to search your columns...")))) }
+        selectizeInput(pid("own"), "Your column(s): one column, or several items to build a scale from them", allv, selected = keep(pid("own"), NULL), multiple = TRUE, options = list(placeholder = "Type to search your columns...")),
+        div(class = "qc-say", tags$label(class = "small text-muted", `for` = pid("say"), "...or describe it in your own words - the AI assistant sets it up:"),
+          div(class = "d-flex gap-2", tags$input(type = "text", class = "form-control form-control-sm", id = pid("say_txt"), placeholder = "e.g. the six well-being items WB01 to WB06, averaged"),
+            tags$button(type = "button", class = "btn btn-ai-outline btn-sm", onclick = sprintf("QC.askFrom('%s', %s)", pid("say_txt"),
+              jsonlite::toJSON(sprintf("For %s, the %s should be: ", pt$id, tolower(r$label)), auto_unbox = TRUE)), "\u2726 Set it up"))))) }
+  # how a construct is measured: the scale, its scoring and every item (with the question, reversed or not) - editable
+  measure_panel <- function(s, key, hid = "") { d <- wdata(); L <- wlabels()
+    a <- tryCatch(qc_scale_alpha_raw(d, s), error = function(e) list(alpha = NA, n = NA))
+    num <- names(d)[vapply(d, is.numeric, logical(1))]; others <- setdiff(num, c(s$items, vapply(wscales(), `[[`, "", "name"), vapply(rv$groups, `[[`, "", "name")))
+    src <- c(codebook = "from your codebook", suggested = "found in your data", own = "your scale")[[if ((s$source %||% "own") %in% c("codebook", "suggested")) s$source else "own"]]
+    ilab <- function(it) { x <- L[[it]] %||% (rv$cb$vars[[it]]$label %||% it); qc_item_text(x) }
+    meth <- c("Mean of the items" = "mean", "Sum of the items" = "sum", if (length(s$items) == 5) c("WHO-5 index (raw sum x 4, 0-100)" = "who5"))
+    div(class = "qc-measure", `data-items` = paste(s$items, collapse = ","),
+      div(class = "qc-m-head", span(class = "qc-m-kicker", "How it is measured"), " ", tags$b(s$label %||% s$name), " ", tags$code(s$name), " = ", qc_method_text(s$method), sprintf(" of %d items", length(s$items)),
+        span(class = paste("qc-src", if (identical(src, "from your codebook")) "cb" else "app"), src)),
+      tags$table(class = "table table-sm qc-items", tags$thead(tags$tr(tags$th("Use"), tags$th("Item"), tags$th("Question (item wording)"), tags$th("Reversed"))),
+        tags$tbody(lapply(s$items, function(it) tags$tr(
+          tags$td(tags$input(type = "checkbox", class = "qc-it-use", `data-item` = it, checked = NA, `aria-label` = paste("use", it))),
+          tags$td(tags$code(it)), tags$td(class = "small", ilab(it)),
+          tags$td(tags$input(type = "checkbox", class = "qc-it-rev", `data-item` = it, checked = if (it %in% s$reverse) NA else NULL, `aria-label` = paste("reverse", it))))))),
+      div(class = "small qc-m-note", if (!is.na(a$alpha)) tagList("Cronbach's alpha = ", tags$b(qc_fmt_r(a$alpha)), sprintf(" (n = %d)", a$n), if (a$alpha < .7) span(class = "text-warning", " - below .70") else " - good internal consistency", ". ") else "",
+        if (length(s$reverse)) sprintf("Reversed items are recoded first (%s + %s - answer), so a high score always means more of '%s'. ", qc_fmt_num(s$min %||% 1), qc_fmt_num(s$max %||% 5), s$label %||% s$name) else "",
+        if (nzchar(s$why %||% "")) s$why),
+      div(class = "qc-m-edit", tags$select(class = "form-select form-select-sm qc-m-method", `aria-label` = "Score", lapply(seq_along(meth), function(j) tags$option(value = meth[[j]], selected = if (identical(meth[[j]], s$method %||% "mean")) NA else NULL, names(meth)[j]))),
+        tags$select(class = "form-select form-select-sm qc-m-add", `aria-label` = "Add an item to this scale",
+          tags$option(value = "", selected = NA, "Add an item..."), lapply(others, function(v) tags$option(value = v, lab_ui(v, L)))),
+        tags$button(type = "button", class = "btn btn-outline-primary btn-sm", onclick = sprintf("QC.scaleEdit(this, '%s')", s$name), "Update scale"),
+        tags$button(type = "button", class = "btn btn-ai-outline btn-sm", onclick = sprintf("QC.ask(%s)", jsonlite::toJSON(sprintf("Explain the scale %s (%s) for %s: its items, why some are reversed, how the score is calculated and what its Cronbach's alpha means.", s$label %||% s$name, s$name, hid), auto_unbox = TRUE)), "\u2726 Explain"))) }
+  observeEvent(input$sc_edit, { e <- input$sc_edit; s <- sc_of(e$name); req(s)
+    items <- unique(c(intersect(s$items, unlist(e$use)), intersect(unlist(e$add), names(wdata())))); rev <- intersect(unlist(e$rev), items); m <- e$method %||% s$method %||% "mean"
+    if (length(items) < 2) { showNotification("A scale needs at least two items.", type = "warning"); return() }
+    if (m == "who5" && length(items) != 5) { showNotification("The WHO-5 index needs exactly 5 items; using the mean instead.", type = "warning"); m <- "mean" }
+    x <- unlist(wdata()[, items, drop = FALSE]); x <- x[!is.na(x) & x >= 0]
+    s2 <- utils::modifyList(s, list(items = items, reverse = rev, method = m, min = if (length(x)) min(x) else s$min, max = if (length(x)) max(x) else s$max, source = "own",
+      why = sprintf("Your scale: %s of %s.", qc_method_text(m), paste(ifelse(items %in% rev, paste0(items, " (reversed)"), items), collapse = ", "))))
+    s2 <- s2[intersect(names(s2), c("name", "label", "items", "reverse", "method", "min", "max", "text", "preset", "source", "why"))]
+    rv$scales <- c(Filter(function(z) !identical(z$name, s$name), rv$scales), list(s2)); l <- rv$labels; if (is.null(l[[s2$name]])) l[[s2$name]] <- s2$label; rv$labels <- l; rv$locked <- FALSE
+    a <- tryCatch(qc_scale_alpha_raw(wdata(), s2), error = function(e) list(alpha = NA))
+    showNotification(sprintf("Scale %s updated: %s of %d items%s.", s2$name, qc_method_text(m), length(items), if (!is.na(a$alpha)) sprintf(", alpha = %s", qc_fmt_r(a$alpha)) else ""), type = "message") })
   part_details <- function(k, sp, uid) { d <- wdata(); L <- wlabels(); id <- function(f) paste0(uid, "_", f); val <- function(x) if (is.null(x) || all(is.na(x))) character(0) else x
     selectInput <- function(inputId, label, choices, selected = NULL, ...) shiny::selectInput(inputId, label, choices, keep(inputId, selected), ...)
     selectizeInput <- function(inputId, label, choices, selected = NULL, ...) shiny::selectizeInput(inputId, label, choices, keep(inputId, selected), ...)
@@ -551,6 +626,7 @@ server <- function(input, output, session) {
         div(tags$b("The AI assistant is connected."), div(class = "small", "Let it read the hypotheses it has not seen yet.")),
         tags$button(type = "button", class = "btn btn-ai btn-sm", onclick = "Shiny.setInputValue('pt_ask_ai_new', Date.now(), {priority:'event'})", "Ask the AI")),
       lapply(seq_along(ps), function(k) { pt <- ps[[k]]; sp <- pt$spec
+        bases <- vapply(ps, function(p) hyp_base(p$id), ""); mem <- which(bases == hyp_base(pt$id)); pos <- match(k, mem)
         roles <- qc_recommend_roles(sp, if (isTRUE(pt$from_ai)) list() else pt$phrases, cat0, if (isTRUE(pt$ai$ok)) pt$ai$spec else NULL)
         ok <- !any(is.na(unlist(sp[intersect(names(sp), role_fields)])))
         pd <- if (ok) tryCatch(part_data(sp, d), error = function(e) NULL) else NULL
@@ -559,7 +635,10 @@ server <- function(input, output, session) {
         confirmed <- pt$id %in% conf_ids; conf <- pt$confidence_label %||% NA
         ai <- pt$ai; app0 <- pt$app_spec %||% sp
         ai_state <- if (is.null(ai)) NA else if (!isTRUE(ai$ok)) "none" else if (isTRUE(pt$from_ai)) "used" else if (identical(ai$spec$goal, app0$goal) && identical(unlist(ai$spec[role_fields]), unlist(app0[role_fields]))) "agree" else "differs"
-        card(div(class = "d-flex justify-content-between align-items-start", h5(pt$id), div(
+        tagList(if (length(mem) > 1 && pos == 1) div(class = "qc-group-h", tags$b(sprintf("%s is one hypothesis with %d claims.", hyp_base(pt$id), length(mem))),
+            sprintf(" Each claim needs its own test, so they are shown as %s - together they still count as one hypothesis.", paste(vapply(ps[mem], `[[`, "", "id"), collapse = " and ")),
+            tags$a(href = "#", class = "ms-1", onclick = sprintf("QC.ask(%s); return false;", jsonlite::toJSON(sprintf("%s has %d claims. Explain why they are tested separately and whether one test could cover the whole hypothesis.", hyp_base(pt$id), length(mem)), auto_unbox = TRUE)), "\u2726 Ask why")),
+        card(class = if (length(mem) > 1) "qc-claim" else NULL, div(class = "d-flex justify-content-between align-items-start", h5(if (length(mem) > 1) sprintf("%s \u00b7 claim %d of %d", hyp_base(pt$id), pos, length(mem)) else pt$id), div(
             if (!is.na(conf) && !isTRUE(pt$from_ai)) span(class = paste0("conf conf-", conf), title = "How sure QuantCompass's rules are about this reading. Always check the variables.", c(high = "✓ Sure", medium = "⚠ Check", low = "? Unsure")[[conf]]),
             if (!is.na(ai_state)) span(class = paste0("conf ms-1 conf-ai-", ai_state), c(agree = "✦ AI agrees", differs = "✦ AI reads it differently", none = "✦ AI: no answer", used = "✦ AI's reading")[[ai_state]]),
             if (confirmed) span(class = "decision rej ms-2", "✓ confirmed"))),
@@ -578,11 +657,14 @@ server <- function(input, output, session) {
           tags$details(class = "mt-2", tags$summary("Direction, groups and conditions"), part_details(k, sp, pt$uid)),
           if (!is.null(pair)) div(class = "hpair", div(span(class = "lab lab-h1", pair$lab1), "Research hypothesis: ", pair$h1),
             div(span(class = "lab lab-h0", pair$lab0), "Null hypothesis: ", pair$h0),
+            if (nzchar(pt$user_h0 %||% "")) div(class = "small text-muted", "Your H0 as written: ", pt$user_h0),
             if (!is.na(n_used)) div(class = "small", sprintf("Cases with complete answers for this hypothesis (before the final exclusions): %d", n_used))),
           div(class = "mt-3", tags$button(type = "button", class = "btn btn-success btn-sm", if (confirmed) "Confirm again" else "✓ Confirm", onclick = sprintf("Shiny.setInputValue('pt_confirm', %d, {priority:'event'})", k)),
             tags$button(type = "button", class = "btn btn-outline-danger btn-sm ms-2", "Remove", onclick = sprintf("Shiny.setInputValue('pt_remove', %d, {priority:'event'})", k)),
-            tags$button(type = "button", class = "btn btn-ai-outline btn-sm ms-2", title = "Only names, labels and the hypothesis are sent - never your data values",
-              if (is.null(ai)) "✦ Ask the AI" else "✦ Ask the AI again", onclick = sprintf("Shiny.setInputValue('pt_ask_ai', %d, {priority:'event'})", k)))) })) })
+            tags$button(type = "button", class = "btn btn-ai-outline btn-sm ms-2", title = "Let the AI read this hypothesis again and recommend variables",
+              if (is.null(ai)) "✦ AI reading" else "✦ Read again", onclick = sprintf("Shiny.setInputValue('pt_ask_ai', %d, {priority:'event'})", k)),
+            tags$button(type = "button", class = "btn btn-ai-outline btn-sm ms-2", onclick = sprintf("QC.ask(%s)", jsonlite::toJSON(sprintf("Break down %s for me in simple words: what it claims, which variables measure it (dependent and independent), and which test fits.", pt$id), auto_unbox = TRUE)),
+              sprintf("✦ Ask about %s", pt$id))))) })) })
   observeEvent(input$pt_ask_ai_new, { k <- which(vapply(rv$parts, function(p) is.null(p$ai), logical(1))); if (length(k)) ask_ai(k) })
 
   # read the card back into an analysis spec; your own multi-column choice becomes a scale
@@ -640,15 +722,17 @@ server <- function(input, output, session) {
     ps[[k]]$phrases <- list(); ps[[k]]$app_spec <- NULL; ps[[k]]$uid <- new_uid(); ps[[k]]$expected <- tryCatch(qc_expected_text(ps[[k]]$spec, wcat()), error = function(e) ""); ps[[k]]$confidence_label <- NA; rv$parts <- ps })
   observeEvent(input$pt_ai_role, { k <- input$pt_ai_role$k; f <- input$pt_ai_role$field; a <- rv$parts[[k]]$ai; req(isTRUE(a$ok))
     updateSelectizeInput(session, sprintf("%s_pick_%s", rv$parts[[k]]$uid, f), selected = as.character(unlist(a$spec[[f]]))) })
-  observeEvent(input$pt_confirm, { k <- input$pt_confirm; pt <- rv$parts[[k]]; sp <- spec_from_part(k)
-    if (any(is.na(unlist(sp[intersect(names(sp), role_fields)])))) { showNotification("Choose a column for every role first.", type = "warning"); return() }
-    used <- unlist(sp[intersect(names(sp), c(role_fields, "predictors"))]); if (anyDuplicated(used)) { showNotification("The same column is used for two roles.", type = "warning"); return() }
-    if (sp$goal == "prediction" && !length(sp$predictors)) { showNotification("Choose at least one predictor.", type = "warning"); return() }
-    if (sp$goal == "reliability" && length(sp$items) < 2) { showNotification("Choose at least two items.", type = "warning"); return() }
+  observeEvent(input$pt_confirm, { k <- input$pt_confirm; r <- confirm_part(k, spec_from_part(k)); if (!isTRUE(r)) showNotification(r, type = "warning") })
+  confirm_part <- function(k, sp) { pt <- rv$parts[[k]]
+    if (any(is.na(unlist(sp[intersect(names(sp), role_fields)])))) return(sprintf("%s: choose a column for every role first.", pt$id))
+    used <- unlist(sp[intersect(names(sp), c(role_fields, "predictors"))]); if (anyDuplicated(used)) return(sprintf("%s: the same column is used for two roles.", pt$id))
+    if (sp$goal == "prediction" && !length(sp$predictors)) return(sprintf("%s: choose at least one predictor.", pt$id))
+    if (sp$goal == "reliability" && length(sp$items) < 2) return(sprintf("%s: choose at least two items.", pt$id))
     cat0 <- wcat(); expected <- tryCatch(qc_expected_text(sp, cat0), error = function(e) pt$expected)
     # scales QuantCompass found become your scales (you can check their items in step 3D)
     add <- Filter(function(s) s$name %in% unlist(sp[c(role_fields, "predictors", "controls")]) && !(s$name %in% vapply(rv$scales, `[[`, "", "name")), cands())
-    if (length(add)) { rv$scales <- c(rv$scales, lapply(add, function(s) s[intersect(names(s), c("name", "label", "items", "reverse", "method", "min", "max", "text", "preset"))]))
+    if (length(add)) { sc <- c(rv$scales, lapply(add, function(s) s[intersect(names(s), c("name", "label", "items", "reverse", "method", "min", "max", "text", "preset", "source", "why"))]))
+      rv$scales <- sc[!duplicated(vapply(sc, `[[`, "", "name"))]
       l <- rv$labels; for (s in add) if (is.null(l[[s$name]])) l[[s$name]] <- s$label; rv$labels <- l; rv$locked <- FALSE }
     ai <- pt$ai; app0 <- pt$app_spec %||% pt$spec
     ai_used <- if (isTRUE(ai$ok) && (isTRUE(pt$from_ai) || any(vapply(role_fields, function(f) { a <- ai$spec[[f]]; !is.null(a) && !is.na(a) && identical(sp[[f]], a) && !identical(app0[[f]], a) }, logical(1))))) ai$model else NULL
@@ -656,7 +740,7 @@ server <- function(input, output, session) {
     h <- list(id = pt$id, text = pt$text, spec = sp, choice = "auto", mode = "recommended", expected = expected, ai = ai_used)
     if (length(old) && identical(old[[1]]$spec, sp)) { h$choice <- old[[1]]$choice; h$mode <- old[[1]]$mode }
     ps <- rv$parts; ps[[k]]$spec <- sp; ps[[k]]$expected <- expected; if (!is.null(pt$app_spec) && !isTRUE(pt$from_ai)) ps[[k]]$app_spec <- pt$app_spec; rv$parts <- ps
-    rv$hyps <- c(Filter(function(x) x$id != h$id, rv$hyps), list(h)); showNotification(paste(h$id, "confirmed."), type = "message") })
+    rv$hyps <- c(Filter(function(x) x$id != h$id, rv$hyps), list(h)); showNotification(paste(h$id, "confirmed."), type = "message"); TRUE }
   observeEvent(input$pt_ai, { k <- input$pt_ai; ps <- rv$parts; a <- ps[[k]]$ai; req(isTRUE(a$ok))
     ps[[k]]$app_spec <- ps[[k]]$spec; ps[[k]]$spec <- a$spec; ps[[k]]$expected <- a$expected; ps[[k]]$from_ai <- TRUE; ps[[k]]$uid <- new_uid(); rv$parts <- ps })
   observeEvent(input$pt_remove, { k <- input$pt_remove; id <- rv$parts[[k]]$id; rv$parts <- rv$parts[-k]; rv$hyps <- Filter(function(x) x$id != id, rv$hyps) })
@@ -715,7 +799,7 @@ server <- function(input, output, session) {
   outputOptions(output, "ai_fields", suspendWhenHidden = FALSE)
   output$ai_status <- renderUI({ if (!isTRUE(input$ai_on)) return(note("The AI assistant is switched off for this session."))
     cfg <- ai_cfg(); if (is.null(cfg)) return(p(class = "text-danger small", "Paste your API key to connect."))
-    div(class = "openq small", tags$b("The AI assistant is on. "), qc_ai_notice(cfg)) })
+    div(class = "openq small", tags$b("The AI assistant is on. "), qc_ai_notice(cfg, input$chat_access %||% "full")) })
   # once connected, the AI catches up on what is already on screen (debounced: not while the key is being typed)
   ai_cfg_d <- debounce(ai_cfg, 2000)
   observeEvent(ai_cfg_d(), { cfg <- ai_cfg_d(); if (is.null(cfg)) return()
@@ -774,7 +858,8 @@ server <- function(input, output, session) {
         if (!is.null(ck) && nrow(ck)) tags$table(class = "table table-sm qc-checks", tags$thead(tags$tr(tags$th(""), tags$th("Assumption"), tags$th("How it was checked"), tags$th("Result"), tags$th("What it means"))),
           tags$tbody(lapply(seq_len(nrow(ck)), function(j) { m <- ck$met[j]
             tags$tr(tags$td(if (isTRUE(m)) sym("ok") else if (isFALSE(m)) sym("warn") else ""), tags$td(ck$check[j]), tags$td(class = "small", ck$method[j]), tags$td(class = "small", ck$value[j]), tags$td(class = "small", ck$meaning[j])) }))),
-        div(class = "qc-testbox", tags$b("Test for this hypothesis: ", qc_test_labels[[dec$test_id]] %||% dec$test_id), div(class = "small", dec$reason)),
+        div(class = "qc-testbox", tags$b("Test for this hypothesis: ", qc_test_labels[[dec$test_id]] %||% dec$test_id), div(class = "small", dec$reason),
+          tags$button(type = "button", class = "btn btn-ai-outline btn-sm mt-2", onclick = sprintf("QC.ask(%s)", jsonlite::toJSON(sprintf("Explain the assumption checks for %s in simple words: what each one means, what my data shows, and why this test was chosen.", h$id), auto_unbox = TRUE)), "\u2726 Explain these checks")),
         if (length(x$opts) > 1) div(class = "mt-2", span(class = "small text-muted me-2", "Use:"),
           lapply(seq_along(x$opts), function(j) { o <- x$opts[[j]]
             tags$button(type = "button", class = paste("btn btn-sm me-2 mb-1", if (j == cur) "btn-primary" else "btn-outline-secondary"), title = o$why,
@@ -831,6 +916,7 @@ server <- function(input, output, session) {
         card(h5(paste0(x$id, ": ", x$test)),
           div(class = "hpair", div(span(class = "lab lab-h1", x$lab1), "Research hypothesis: ", x$h1), div(span(class = "lab lab-h0", x$lab0), "Null hypothesis: ", x$h0)),
           span(class = paste("decision", if (isTRUE(x$decision$rejected)) "rej" else "keep"), x$decision$short),
+          tags$button(type = "button", class = "btn btn-ai-outline btn-sm ms-2", onclick = sprintf("QC.ask(%s)", jsonlite::toJSON(sprintf("Explain the result of %s in simple words: what the numbers mean, whether the hypothesis is supported, and how to report it.", x$id), auto_unbox = TRUE)), "\u2726 Explain this result"),
           p(tags$b("Why this test: "), x$reason), div(class = "paste", x$paragraph), br(),
           downloadButton(paste0("dl_docx_", i), "Word report"), downloadButton(paste0("dl_r_", i), "R script"),
           tags$details(class = "mt-3", tags$summary("Show full report with charts"), tags$iframe(src = paste0("qcresults/", rel)))) }), "5fr 7fr") })
@@ -850,12 +936,148 @@ server <- function(input, output, session) {
   observeEvent(input$open_dir, { d <- file.path(rv$out_dir, "analysis")
     if (.Platform$OS.type == "windows") shell.exec(d) else if (Sys.info()[["sysname"]] == "Darwin") system2("open", d) else system2("xdg-open", d, wait = FALSE) })
   # ======================================================================= step status, Back / Continue bar, summary panel
+  # ======================================================================= the AI assistant chat (on every page)
+  chat_add <- function(m) { rv$chat <- c(rv$chat, list(m)); length(rv$chat) }
+  part_index <- function(id) { ids <- vapply(rv$parts, `[[`, "", "id"); k <- which(ids == id); if (!length(k)) k <- which(vapply(ids, hyp_base, "") == id); if (length(k)) k[1] else NA }
+  # everything the assistant may know about the project right now
+  assist_state <- function() {
+    cur <- isolate(input$nav) %||% "s1"; st <- list(step = sprintf("%s (step %s of 6)", qc_steps[[cur]], substring(cur, 2)), hyps = list(), n_hyp = 0)
+    if (is.null(rv$raw)) return(st)
+    d <- tryCatch(wdata(), error = function(e) rv$raw); cat0 <- tryCatch(wcat(), error = function(e) qc_catalog(d, rv$labels, rv$level_labels))
+    ex <- tryCatch(prep_obj()$exclusions, error = function(e) rv$excl)
+    used <- unlist(lapply(rv$hyps, function(h) h$spec[c(role_fields, "predictors", "controls")]))
+    sc <- lapply(tryCatch(wscales(), error = function(e) rv$scales), function(s) { s$alpha <- tryCatch(qc_scale_alpha_raw(d, s)$alpha, error = function(e) NA); s$used <- s$name %in% used; s })
+    conf <- vapply(rv$hyps, `[[`, "", "id")
+    hy <- lapply(rv$parts, function(pt) { sp <- pt$spec; r <- unlist(sp[intersect(names(sp), c(role_fields, "predictors", "controls"))])
+      list(id = pt$id, text = pt$text, goal = sp$goal, roles = paste(sprintf("%s = %s", names(r), r), collapse = ", "), confirmed = pt$id %in% conf, expected = pt$expected %||% "", user_h0 = pt$user_h0 %||% "") })
+    as <- if (rv$locked) tryCatch(unlist(lapply(as_items(), function(x) { if (!is.null(x$error)) return(sprintf("%s: %s", x$h$id, x$error)); ck <- x$screen$checks; dec <- x$screen$decision
+      c(sprintf("%s: test = %s. %s", x$h$id, qc_test_labels[[dec$test_id]] %||% dec$test_id, dec$reason),
+        if (!is.null(ck) && nrow(ck)) sprintf("   %s %s: %s", ifelse(ck$met %in% TRUE, "met", ifelse(ck$met %in% FALSE, "NOT met", "info")), ck$check, ck$value)) })), error = function(e) character()) else character()
+    res <- if (!is.null(rv$results)) unlist(lapply(rv$results$items, function(x) if (isTRUE(x$blocked)) sprintf("%s: not run - %s", x$id, x$message)
+      else c(sprintf("%s (%s): %s", x$id, x$test, x$decision$short), sprintf("   %s", x$paragraph)))) else character()
+    c(st, list(file = basename(rv$path), n_raw = nrow(rv$raw), n_cols = ncol(rv$raw), codebook = if (!is.null(rv$cb)) rv$cb$source else NULL,
+      cb_problems = rv$cb$problems, data = d, cat = cat0, check = rv$cb_check, level_labels = rv$level_labels, exclusions = ex,
+      flow = tryCatch(base_res()$flow, error = function(e) character()), manual = rv$manual, scales = sc, groups = rv$groups,
+      hyps = hy, part_ids = vapply(rv$parts, `[[`, "", "id"), n_hyp = n_hyp_of(vapply(rv$parts, `[[`, "", "id")),
+      final = if (rv$locked) sprintf("Confirmed: %d cases, %d variables.", nrow(rv$final$data), ncol(rv$final$data)) else "Not confirmed yet (step 3).",
+      assumptions = as, results = res, id_var = tryCatch(id_var(), error = function(e) names(rv$raw)[1]), raw_ids = tryCatch(rv$raw[[id_var()]], error = function(e) NULL),
+      raw_names = stats::setNames(names(rv$raw), names(rv$raw)), codebook_lines = rv$cb$lines %||% character()))
+  }
+  # a snapshot of everything the assistant can change, for Undo
+  snap <- function() { ex <- tryCatch(prep_obj()$exclusions, error = function(e) rv$excl)
+    list(labels = rv$labels, level_labels = rv$level_labels, cb = rv$cb, cb_check = rv$cb_check, accept_na = rv$accept_na, excl = ex, manual = rv$manual,
+         scales = rv$scales, groups = rv$groups, parts = rv$parts, hyps = rv$hyps, locked = rv$locked, final = rv$final, htexts = isolate(input$htexts) %||% "") }
+  restore <- function(z) { for (f in setdiff(names(z), c("excl", "htexts"))) rv[[f]] <- z[[f]]
+    rv$excl <- z$excl; for (x in z$excl) updateCheckboxInput(session, paste0("ex_", x$id), value = isTRUE(x$on)); updateTextAreaInput(session, "htexts", value = z$htexts) }
+  refresh_cb <- function() { if (is.null(rv$cb)) return(); rv$cb_check <- qc_codebook_check(rv$cb, rv$raw)
+    ap <- qc_codebook_apply(rv$cb, rv$raw, rv$accept_na); rv$level_labels <- ap$level_labels; rv$locked <- FALSE }
+  hyp_text_sync <- function() { ps <- rv$parts; b <- unique(vapply(ps, function(p) hyp_base(p$id), ""))
+    txt <- vapply(b, function(x) { p <- ps[[which(vapply(ps, function(q) hyp_base(q$id), "") == x)[1]]]; sprintf("%s: %s", x, p$text) }, "")
+    updateTextAreaInput(session, "htexts", value = paste(txt, collapse = "\n")) }
+  ensure_cb_var <- function(v) { if (is.null(rv$cb)) rv$cb <- list(vars = list(), rules = list(), source = "codebook entries made in the app", problems = character())
+    cb <- rv$cb; if (is.null(cb$vars[[v]])) cb$vars[[v]] <- qc_cb_entry(v, rv$labels[[v]] %||% NA_character_); cb }
+  # one checked change -> the app's state
+  apply_action <- function(x) { a <- x$action; tp <- a$type; d <- wdata()
+    switch(tp,
+      set_label = { l <- rv$labels; l[[a$variable]] <- a$label; rv$labels <- l },
+      set_codes = { cb <- ensure_cb_var(a$variable); cd <- unlist(a$codes); cb$vars[[a$variable]]$values <- stats::setNames(as.character(cd), names(cd)); cb$vars[[a$variable]]$kind <- "codes"; rv$cb <- cb; refresh_cb() },
+      clear_codes = { cb <- ensure_cb_var(a$variable); cb$vars[[a$variable]]$values <- character(); cb$vars[[a$variable]]$kind <- "none"; rv$cb <- cb; refresh_cb() },
+      set_missing = { cb <- ensure_cb_var(a$variable); cb$vars[[a$variable]]$missing <- unique(c(cb$vars[[a$variable]]$missing, as.character(unlist(a$codes)))); rv$cb <- cb; refresh_cb() },
+      exclusion_on = , exclusion_off = { on <- tp == "exclusion_on"; ex <- rv$excl; for (i in seq_along(ex)) if (identical(ex[[i]]$id, x$id)) ex[[i]]$on <- on
+        rv$excl <- ex; updateCheckboxInput(session, paste0("ex_", x$id), value = on); rv$locked <- FALSE },
+      add_exclusion = { cc <- qc_parse_condition_text(a$condition, base_res()$data); id <- paste0("ai_", length(rv$excl) + 1)
+        rv$excl <- c(rv$excl, list(list(id = id, label = a$label %||% a$condition, cond = qc_cond_code(cc), on = TRUE, reason = sprintf("Added with the AI assistant: remove cases where %s.", a$condition), from = "assistant"))); rv$locked <- FALSE },
+      exclude_cases = { rv$manual <- unique(rbind(rv$manual, data.frame(id = as.character(unlist(a$ids)), reason = a$reason))); rv$locked <- FALSE },
+      create_scale = , update_scale = { it <- as.character(unlist(a$items)); xs <- unlist(d[, it, drop = FALSE]); xs <- xs[!is.na(xs) & xs >= 0]
+        s <- list(name = a$name, label = a$label %||% a$name, items = it, reverse = intersect(as.character(unlist(a$reverse)), it), method = a$method %||% "mean",
+                  min = min(xs), max = max(xs), text = "", source = "own", why = "Built with the AI assistant.")
+        rv$scales <- c(Filter(function(z) !identical(z$name, s$name), rv$scales), list(s)); l <- rv$labels; l[[s$name]] <- s$label; rv$labels <- l; rv$locked <- FALSE },
+      delete_scale = { rv$scales <- Filter(function(z) !identical(z$name, a$name), rv$scales); rv$locked <- FALSE },
+      create_group = { g <- list(name = a$name, label = a$label %||% a$name, groups = lapply(a$groups, function(r) list(label = r$label, cond = qc_parse_condition_text(r$condition, base_res()$data))))
+        rv$groups <- c(Filter(function(z) !identical(z$name, g$name), rv$groups), list(g)); l <- rv$labels; l[[g$name]] <- g$label; rv$labels <- l; rv$locked <- FALSE },
+      add_hypothesis = { ids <- unique(vapply(rv$parts, function(p) hyp_base(p$id), "")); id <- a$id %||% ""; if (!nzchar(id)) { k <- length(ids) + 1; while (paste0("H", k) %in% ids) k <- k + 1; id <- paste0("H", k) }
+        add_parts(stats::setNames(a$text, id)); hyp_text_sync() },
+      edit_hypothesis = { k <- vapply(rv$parts, function(p) hyp_base(p$id) == a$id, logical(1)); old <- rv$parts; rv$hyps <- Filter(function(h) hyp_base(h$id) != a$id, rv$hyps)
+        rv$parts <- old[!k]; add_parts(stats::setNames(a$text, a$id), at = which(k)[1]); hyp_text_sync() },
+      remove_hypothesis = { rv$parts <- Filter(function(p) hyp_base(p$id) != a$id, rv$parts); rv$hyps <- Filter(function(h) hyp_base(h$id) != a$id, rv$hyps); hyp_text_sync() },
+      set_hypothesis = { k <- part_index(a$id); ps <- rv$parts; sp <- x$spec
+        ps[[k]]$app_spec <- ps[[k]]$app_spec %||% ps[[k]]$spec; ps[[k]]$spec <- sp; ps[[k]]$uid <- new_uid(); ps[[k]]$from_ai <- TRUE; ps[[k]]$confidence_label <- "high"
+        ps[[k]]$ai <- list(ok = TRUE, spec = sp, model = sprintf("%s, %s", ai_cfg()$label, ai_cfg()$model), reason = "Set up in the AI chat.")
+        ps[[k]]$expected <- tryCatch(qc_expected_text(sp, wcat()), error = function(e) ""); rv$parts <- ps; rv$hyps <- Filter(function(h) h$id != ps[[k]]$id, rv$hyps) },
+      confirm_hypothesis = { ids <- vapply(rv$parts, `[[`, "", "id"); ks <- which(ids == a$id | vapply(ids, hyp_base, "") == a$id)
+        for (k in ks) { r <- confirm_part(k, rv$parts[[k]]$spec); if (!isTRUE(r)) stop(r) } },
+      confirm_data = { if (!isTRUE(confirm_gate())) stop("the final data could not be confirmed - check step 3") },
+      run_analyses = run_all(),
+      go_to_step = updateNavbarPage(session, "nav", paste0("s", as.integer(a$step))))
+    invisible(TRUE) }
+  apply_msg <- function(i, which = NULL) { m <- rv$chat[[i]]; idx <- which(vapply(m$actions, function(a) identical(a$status, "pending"), logical(1))); if (!is.null(which)) idx <- intersect(idx, which)
+    if (!length(idx)) return()
+    z <- snap()
+    for (j in idx) { r <- tryCatch({ apply_action(m$actions[[j]]); "applied" }, error = function(e) paste("failed:", conditionMessage(e)))
+      m$actions[[j]]$status <- if (identical(r, "applied")) "applied" else "failed"; if (!identical(r, "applied")) m$actions[[j]]$error <- sub("^failed: ", "", r) }
+    m$snaps <- c(m$snaps, list(z)); ch <- rv$chat; ch[[i]] <- m; rv$chat <- ch; rv$undo_last <- i }
+  observeEvent(input$chat_send, { txt <- trimws(input$chat_send$text %||% ""); if (!nzchar(txt)) return()
+    chat_add(list(role = "user", text = txt))
+    cfg <- ai_cfg()
+    if (is.null(cfg)) { chat_add(list(role = "assistant", setup = TRUE, actions = list(),
+      text = "I am not connected yet. Open **✦ AI assistant** in the top bar (or the AI card in step 1), choose a provider, paste your own key and tick *Use the AI assistant*. Then ask me again - I will see your whole project.")); return() }
+    st <- tryCatch(assist_state(), error = function(e) list(step = "?"))
+    hist <- lapply(utils::head(rv$chat, -1), function(m) list(role = m$role, text = m$text %||% ""))
+    r <- withProgress(message = "The AI assistant is thinking...", value = .3,
+      tryCatch(qc_assist_turn(cfg, st, hist, txt, input$chat_access %||% "full"), error = function(e) list(ok = FALSE, reply = paste("The AI service did not answer:", conditionMessage(e)), actions = list())))
+    acts <- lapply(r$actions, function(a) { a$status <- if (isTRUE(a$ok)) "pending" else "invalid"; a })
+    i <- chat_add(list(role = "assistant", text = r$reply, actions = acts, lookups = r$lookups, mode = input$chat_mode %||% "ask"))
+    if (identical(input$chat_mode, "auto")) apply_msg(i) })
+  observeEvent(input$chat_act, { e <- input$chat_act; i <- as.integer(e$i); req(i <= length(rv$chat)); m <- rv$chat[[i]]
+    if (e$what == "allow_all") apply_msg(i)
+    else if (e$what == "allow") apply_msg(i, as.integer(e$j))
+    else if (e$what == "deny_all") { for (j in seq_along(m$actions)) if (identical(m$actions[[j]]$status, "pending")) m$actions[[j]]$status <- "denied"; ch <- rv$chat; ch[[i]] <- m; rv$chat <- ch }
+    else if (e$what == "deny") { j <- as.integer(e$j); m$actions[[j]]$status <- "denied"; ch <- rv$chat; ch[[i]] <- m; rv$chat <- ch }
+    else if (e$what == "undo" && length(m$snaps)) { restore(m$snaps[[1]]); for (j in seq_along(m$actions)) if (identical(m$actions[[j]]$status, "applied")) m$actions[[j]]$status <- "undone"
+      m$snaps <- list(); ch <- rv$chat; ch[[i]] <- m; rv$chat <- ch; rv$undo_last <- NULL; showNotification("Changes undone.", type = "message") } })
+  observeEvent(input$chat_clear, { rv$chat <- list(); rv$undo_last <- NULL })
+  output$chat_status <- renderUI({ cfg <- ai_cfg()
+    div(class = "qc-chat-status", if (is.null(cfg)) tagList(span(class = "qc-chip-state off", "off"), " Not connected - ", tags$a(href = "#", onclick = "QC.openAI(); return false;", "connect your AI"))
+      else tagList(span(class = "qc-chip-state on", "on"), sprintf(" %s · %s", cfg$label, cfg$model)),
+      if (length(rv$chat)) tags$a(href = "#", class = "ms-auto small", onclick = "Shiny.setInputValue('chat_clear', Date.now(), {priority:'event'}); return false;", "New chat")) })
+  chat_examples <- reactive({ switch(input$nav %||% "s1",
+    s1 = c("Explain my codebook check", "What is in my data?", "Which variables are scales?"),
+    s2 = c("Break down all my hypotheses", "Use the codebook's scales for my hypotheses", "Which is the dependent variable in H1?"),
+    s3 = c("Explain the exclusion steps", "Why are these cases removed?", "Are my scales built correctly?"),
+    s4 = c("Describe my sample in simple words", "What does Cronbach's alpha mean for my scales?"),
+    s5 = c("Explain the assumption checks", "Which test fits each hypothesis and why?"),
+    s6 = c("Explain my results in simple words", "What does the p-value mean here?", "Help me write the results section")) })
+  output$chat_chips <- renderUI(div(class = "qc-chat-chips", lapply(chat_examples(), function(x) tags$button(type = "button", class = "idea", onclick = sprintf("QC.ask(%s)", jsonlite::toJSON(x, auto_unbox = TRUE)), x))))
+  output$chat_msgs <- renderUI({ ch <- rv$chat; mode <- input$chat_mode %||% "ask"
+    if (!length(ch)) return(div(class = "qc-msg ai", div(class = "qc-msg-who", "✦ AI assistant"),
+      div(class = "qc-msg-body", p("Hi! I can see your whole project: data, codebook, exclusions, scales, hypotheses, checks and results."),
+        p("Ask me anything - I explain in simple words. Or tell me what to change, and I do it: for example fix a codebook entry, build a scale, choose the variables for a hypothesis, exclude cases or run the tests."),
+        p(class = "small text-muted", "Changes need your OK (see the setting above). You can always undo them. Your original data file is never changed."))))
+    tagList(lapply(seq_along(ch), function(i) { m <- ch[[i]]
+      if (m$role == "user") return(div(class = "qc-msg user", div(class = "qc-msg-body", m$text)))
+      acts <- m$actions %||% list(); pend <- which(vapply(acts, function(a) identical(a$status, "pending"), logical(1)))
+      ico <- c(pending = "○", applied = "✓", failed = "✗", denied = "–", undone = "↶", invalid = "✗")
+      div(class = "qc-msg ai", div(class = "qc-msg-who", "✦ AI assistant", if (length(m$lookups)) span(class = "qc-msg-look", sprintf(" · %s", paste(unique(m$lookups), collapse = ", ")))),
+        div(class = "qc-msg-body", HTML(shiny::markdown(m$text %||% ""))),
+        if (length(acts)) div(class = "qc-acts", div(class = "qc-acts-h", if (length(pend)) "Proposed changes - your OK is needed:" else "Changes:"),
+          lapply(seq_along(acts), function(j) { a <- acts[[j]]
+            div(class = paste("qc-act", a$status), span(class = "qc-act-ico", ico[[a$status]]), span(class = "qc-act-t", a$text),
+              if (a$status %in% c("failed", "invalid")) span(class = "small text-danger", " - ", a$error %||% ""),
+              if (identical(a$status, "pending") && identical(mode, "ask") && length(pend) > 1) span(class = "qc-act-btns",
+                tags$button(type = "button", class = "btn btn-success btn-xs", onclick = sprintf("QC.act(%d,'allow',%d)", i, j), "Allow"),
+                tags$button(type = "button", class = "btn btn-outline-secondary btn-xs", onclick = sprintf("QC.act(%d,'deny',%d)", i, j), "Deny"))) }),
+          if (length(pend)) div(class = "qc-acts-btns", tags$button(type = "button", class = "btn btn-success btn-sm", onclick = sprintf("QC.act(%d,'allow_all',0)", i),
+              if (length(pend) == 1) "Allow" else sprintf("Allow all %d", length(pend))),
+            tags$button(type = "button", class = "btn btn-outline-secondary btn-sm", onclick = sprintf("QC.act(%d,'deny_all',0)", i), "Deny")),
+          if (length(m$snaps) && identical(rv$undo_last, i)) div(class = "qc-acts-btns", tags$button(type = "button", class = "btn btn-outline-secondary btn-sm", onclick = sprintf("QC.act(%d,'undo',0)", i), "↶ Undo these changes")))) })) })
+
   safe <- function(expr, alt = NULL) tryCatch(expr, error = function(e) alt)
   observeEvent(input$nav, { rv$seen <- union(rv$seen, input$nav) })
   needs_run <- reactive({ length(rv$hyps) > 0 && (is.null(rv$results) || !identical(rv$ran_hyps, rv$hyps)) })
   step_info <- reactive({ has <- !is.null(rv$raw)
     n_rb <- if (has && !is.null(rv$cb)) safe(nrow(rule_breaks()), 0) else 0; rb_open <- n_rb > 0 && !rv$rb_done
-    n_parts <- length(rv$parts); n_conf <- sum(vapply(rv$parts, `[[`, "", "id") %in% vapply(rv$hyps, `[[`, "", "id"))
+    pids <- vapply(rv$parts, `[[`, "", "id"); cids <- vapply(rv$hyps, `[[`, "", "id")
+    n_parts <- n_hyp_of(pids); n_conf <- sum(vapply(unique(vapply(pids, hyp_base, "")), function(b) all(pids[vapply(pids, hyp_base, "") == b] %in% cids), logical(1)))
     list(
       s1 = list(done = has, ok = has, state = if (has) "done" else "todo",
         msg = if (!has) "To do: choose your data file on the left." else if (is.null(rv$cb)) "Data loaded. A codebook is optional but recommended (it labels variables and finds survey rules and scales)."
@@ -874,14 +1096,14 @@ server <- function(input, output, session) {
       s5 = list(done = !is.null(rv$results) && !needs_run(), ok = rv$locked && (length(rv$hyps) > 0 || !is.null(rv$results)),
         state = if (!rv$locked) "locked" else if (!is.null(rv$results) && !needs_run()) "done" else "todo",
         msg = if (!rv$locked) "Confirm the final data in step 3 first." else if (!length(rv$hyps)) "Confirm at least one hypothesis in step 2."
-              else if (needs_run()) sprintf("Assumptions checked for %d hypothes%s. Press Run to test them.", length(rv$hyps), if (length(rv$hyps) == 1) "is" else "es")
+              else if (needs_run()) { nh <- n_hyp_of(vapply(rv$hyps, `[[`, "", "id")); sprintf("Assumptions checked for %d hypothes%s. Press Run to test them.", nh, if (nh == 1) "is" else "es") }
               else "All confirmed hypotheses have been run."),
       s6 = list(done = !is.null(rv$results), ok = FALSE, state = if (!is.null(rv$results)) "done" else if (rv$locked) "todo" else "locked",
         msg = if (is.null(rv$results)) "No results yet. Run your hypotheses in step 5." else sprintf("%d result(s). Everything is saved in your results folder.", length(rv$results$items)))) })
 
   output$qc_footer <- renderUI({ cur <- input$nav %||% "s1"; ks <- names(qc_steps); i <- match(cur, ks); if (is.na(i)) return(NULL)
     si <- step_info()[[cur]]; nxt <- if (i < length(ks)) ks[i + 1] else NA
-    next_lab <- if (cur == "s3" && !rv$locked) "Confirm data & continue" else if (cur == "s5" && needs_run()) sprintf("Run %d hypothes%s", length(rv$hyps), if (length(rv$hyps) == 1) "is" else "es")
+    next_lab <- if (cur == "s3" && !rv$locked) "Confirm data & continue" else if (cur == "s5" && needs_run()) { nh <- n_hyp_of(vapply(rv$hyps, `[[`, "", "id")); sprintf("Run %d hypothes%s", nh, if (nh == 1) "is" else "es") }
       else if (cur == "s5" && is.null(rv$results)) "Run hypotheses"
       else if (!is.na(nxt)) paste("Continue:", qc_steps[[nxt]]) else NULL
     ico <- c(done = "✓", todo = "●", optional = "○", locked = "\U0001F512")[[si$state]]
@@ -921,7 +1143,8 @@ server <- function(input, output, session) {
           if (length(rv$accept_na)) qs_row("Missing codes", sprintf("set for %d variable(s)", length(rv$accept_na))))),
       qs_sec("s2", "Hypotheses & variables", si$s2$state,
         if (!has) div(class = "qs-empty", "Waiting for data") else if (!length(rv$parts)) div(class = "qs-empty", "None entered yet")
-        else tagList(qs_row("Confirmed", sprintf("%d of %d", sum(vapply(rv$parts, `[[`, "", "id") %in% conf_ids), length(rv$parts))),
+        else tagList(qs_row("Hypotheses", { pids <- vapply(rv$parts, `[[`, "", "id"); nb <- n_hyp_of(pids)
+            nc <- sum(vapply(unique(vapply(pids, hyp_base, "")), function(b) all(pids[vapply(pids, hyp_base, "") == b] %in% conf_ids), logical(1))); sprintf("%d (%d confirmed)", nb, nc) }),
           div(class = "qs-hyps", lapply(rv$parts, function(pt) { ok <- pt$id %in% conf_ids; cl <- pt$confidence_label %||% NA
             span(class = paste("qs-h", if (ok) "ok" else if (isTRUE(cl %in% c("medium", "low"))) "check" else "open"),
               title = if (ok) "confirmed" else "not confirmed yet", pt$id) })),
@@ -951,6 +1174,7 @@ server <- function(input, output, session) {
         div(class = "qs-body", qs_row("Status", if (is.null(cfg)) "not connected" else "on"), if (!is.null(cfg)) qs_row("Model", sprintf("%s", cfg$model)),
           qs_row("Used for", { u <- c(if (any(grepl("described by AI", rv$cb$problems %||% character()))) "codebook", if (any(vapply(rv$hyps, function(h) !is.null(h$ai), logical(1)))) "hypotheses")
             if (length(u)) paste(u, collapse = ", ") else "nothing yet" })))) })
+  for (o in c("chat_status", "chat_chips", "chat_msgs", "qc_summary")) outputOptions(output, o, suspendWhenHidden = FALSE)   # drawn even when their panel tab is hidden
 }
 
 shinyApp(ui, server)
