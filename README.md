@@ -8,7 +8,13 @@ For each hypothesis QuantCompass **screens the assumptions first**, **chooses th
 > - **QuantCompass Local** (this repo): runs on your computer. Your data never leaves it.
 > - **[QuantCompass Web](https://github.com/AEMSabbirRifat/QuantCompass-Web)**: the same app in the browser, no installation (in development).
 
-**Status: v0.4 pilot.** Feedback welcome via Issues.
+**Status: v0.6 pilot (November 2026).** Feedback welcome via Issues.
+
+## Why QuantCompass
+
+Students and early researchers spend weeks on the same steps of every quantitative study: cleaning a survey export, building scales, choosing the right test, checking its assumptions and writing it up - often with copied code they do not fully understand. Small mistakes at these steps (a missing-value code left in, a forgotten reversed item, a test whose assumptions do not hold) quietly change the results.
+
+QuantCompass turns these steps into one guided, transparent workflow. Every decision follows fixed, published rules; every number comes from R; and the exact script is handed over, so a supervisor or reviewer can check and reproduce each result. It is built to work with **any** survey dataset and codebook, not one particular study.
 
 ---
 
@@ -126,6 +132,15 @@ See `examples/run_example.R`. Layout: `app/` (click app), `engine/` (import, cod
 - QuantCompass computes results; it cannot judge whether your study design fits your research question. Check with your supervisor.
 - Mention QuantCompass and R in your methods section and include the generated scripts in your appendix.
 - No AI computes any number. The AI assistant (your own key) only suggests codebook entries, hypothesis breakdowns and the variables that measure them; you confirm every suggestion, and its use is disclosed in the reports.
+
+## What's next
+
+- **QuantCompass Web**: the same app in the browser with no installation, running R inside the browser so the data stays on the user's device.
+- **Pilot with students**: use in a methods course and in thesis supervision, with feedback on clarity and correctness.
+- **More analyses**: repeated-measures and mixed ANOVA, multilevel models, factor analysis, and structural equation models (lavaan) for latent variables and multiple mediators.
+- **German interface** and a report checker that compares a written results section with the computed numbers.
+
+See [ROADMAP.md](ROADMAP.md).
 
 ## License
 
