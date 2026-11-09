@@ -223,3 +223,30 @@ details summary { cursor: pointer; color: var(--qc-blue); font-weight: 600; }
   .navbar-nav .nav-link:not(.active) .qc-steplab { display: none; }   /* numbers only, except the current step */
 }
 .qc-ai-drawer h6 { font-weight: 650; font-size: .92rem; margin-top: .4rem; }
+
+/* ---------- step 2: roles with clickable recommendations */
+.qc-type { max-width: 420px; margin-top: .4rem; }
+.qc-role { border: 1px solid var(--qc-line); border-radius: 10px; padding: .6rem .75rem .3rem; margin: .65rem 0; background: #fbfcfe; }
+.qc-role-h { margin-bottom: .35rem; }
+.qc-role .shiny-input-radiogroup { margin-bottom: .2rem; }
+.qc-role .shiny-input-radiogroup .form-check { padding: .35rem .5rem .35rem 2rem; border-radius: 8px; border: 1px solid transparent; margin-bottom: .2rem; }
+.qc-role .shiny-input-radiogroup .form-check:has(input:checked) { background: #eef5ff; border-color: #bcd3f3; }
+.qc-opt { display: inline; }
+.qc-opt-name { font-weight: 600; margin-right: .35rem; }
+.qc-opt-desc { display: block; font-size: .8rem; color: var(--qc-muted); }
+.qc-src { display: inline-block; font-size: .68rem; font-weight: 700; border-radius: 999px; padding: .02rem .45rem; text-transform: uppercase; letter-spacing: .03em; vertical-align: middle; }
+.qc-src.app { background: #e8f1fc; color: var(--qc-blue-dk); }
+.qc-src.ai { background: #efecfd; color: var(--qc-ai); }
+.conf-ai-agree { background: #efecfd; color: var(--qc-ai); }
+.conf-ai-differs { background: #fff4dc; color: #8a5a00; }
+.conf-ai-used { background: #efecfd; color: var(--qc-ai); }
+.conf-ai-none { background: #eef0f4; color: var(--qc-muted); }
+
+/* ---------- step 1: AI assistant card */
+.qc-aicard { border: 1px solid #d9d3f6; background: linear-gradient(135deg, #f6f4ff 0%, #f2f8ff 100%); border-radius: 12px; padding: .9rem 1.1rem; margin-bottom: 1rem; }
+.qc-aicard.on { background: #f7f6fe; }
+.qc-aicard h5 { font-size: 1rem; font-weight: 650; }
+
+/* ---------- step 5: assumption checks */
+.qc-checks td, .qc-checks th { vertical-align: top; }
+.qc-testbox { border-left: 3px solid var(--qc-blue); background: #f2f7ff; padding: .5rem .75rem; border-radius: 0 8px 8px 0; margin-top: .4rem; }
