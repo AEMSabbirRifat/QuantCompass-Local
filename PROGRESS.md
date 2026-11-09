@@ -68,7 +68,15 @@
 - Calmer styling (solid buttons, no glow animations), laptop-sized top bar (1024-1440 px tested), single-column fallback on small screens.
 - Tested: full browser run of all six steps using only the Back / Continue bar (1440x900 and 1280x720), AI drawer and Ask AI with a missing and an invalid key; full validation passes.
 
+## v0.5 (9 Nov 2026): hypotheses first, variables recommended, AI assistant on every page
+- New order: 1 Data & codebook -> 2 Hypotheses & variables -> 3 Prepare data (confirm) -> 4 Describe & reliability -> 5 Assumption checks -> 6 Results.
+- Step 2: for every role (dependent / independent variable, groups, mediator, moderator, controls) QuantCompass recommends a column or a multi-item scale; click the recommendation, an alternative, or "Choose my own" (any column or your own items as a new scale). Badges show where the app and the AI agree.
+- `engine/measures.R`: finds multi-item scales from codebook headings / column stems with the same answer scale, finds reversed items from the answers, builds them with the same code as the final data, and replaces a single item by its whole scale.
+- AI assistant: connected on step 1 (card) or in the top bar; once connected it runs by itself (codebook gaps, every hypothesis), sees the found scales, and its suggestions are validated. Where QuantCompass is unsure, the card starts from the AI's reading.
+- Step 3 builds the scales the hypotheses use; step 4 runs the description and Cronbach's alpha by itself; step 5 (new) shows the assumption checks and the chosen test per hypothesis before running.
+- Tests: new suite `validation/test_measures.R` (57 checks); full validation passes. Browser runs of all six steps on the N=200 data (5 hypotheses, 168 cases, all results) and with a stand-in AI service (agree / differ / take over when unsure).
+
 ## Still open
 - validate.yml on GitHub: optionally add "curl" to the package list (tests do not need it).
-- AI help was tested offline only (fake transport); test once with a real key on the laptop (✦ AI help > Test the connection).
+- The AI assistant was tested offline only (stand-in service); test once with a real key on the laptop (step 1 AI card > Test the connection).
 - QuantCompass-Web still on the old engine.
