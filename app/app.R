@@ -14,20 +14,44 @@ note <- function(...) p(class = "text-muted small", ...)
 sym <- function(s) span(class = paste0("sym sym-", s), c(ok = "✓", warn = "⚠", missing = "✗")[[s]])
 lab_ui <- function(v, labels) if (!is.null(labels[[v]]) && nzchar(labels[[v]]) && labels[[v]] != v) paste0(labels[[v]], " (", v, ")") else v
 named <- function(vs, labels) stats::setNames(vs, vapply(vs, lab_ui, "", labels = labels))
-locked_card <- function() card(h5("Confirm your final dataset first"), p("Analyses use the final dataset only. Check it in step 3 and press ", tags$b("OK, use this data"), "."),
-  actionButton("go_gate", "Go to step 3: Final data", class = "btn-primary"))
+nav_js <- function(step) sprintf("Shiny.setInputValue('qc_nav', '%s', {priority: 'event'}); return false;", step)
+locked_card <- function() split1(card(h5("Confirm your final dataset first"), p("Analyses use the final dataset only. Check it in step 3 and press ", tags$b("Confirm data & continue"), "."),
+  tags$button(type = "button", class = "btn btn-primary", onclick = nav_js("s3"), "Go to step 3: Final data")))
+
+# ---- page layout: a step header, then two panes that scroll on their own (the summary and the Back/Continue bar stay put)
+qc_steps <- c(s1 = "Data & codebook", s2 = "Prepare", s3 = "Final data", s4 = "Describe", s5 = "Hypotheses", s6 = "Results")
+step_title <- function(k) tagList(span(class = "qc-stepn", title = qc_steps[[k]], k), span(class = "qc-steplab", qc_steps[[k]]))
+page_head <- function(k, what) div(class = "qc-page-head", span(class = "qc-kicker", sprintf("Step %d of 6", k)), h4(qc_steps[[k]]), p(what))
+split2 <- function(left, right, cols = "5fr 7fr") div(class = "qc-split", style = sprintf("grid-template-columns: %s;", gsub("([0-9.]+fr)", "minmax(0, \\1)", cols)),
+  div(class = "qc-pane", left), div(class = "qc-pane", right))
+split1 <- function(...) div(class = "qc-split one", div(class = "qc-pane", ...))
+step_tab <- function(k, what, ...) tabPanel(title = step_title(k), value = names(qc_steps)[k], page_head(k, what), ...)
+fill <- function(id) uiOutput(id, class = "qc-fill")
 
 brand <- tags$span(HTML(paste(readLines(file.path(root, "app", "www", "logo_inline.svg"), warn = FALSE), collapse = "")),
   tags$span(tags$span(class = "qc-word", HTML("Quant<b>Compass</b>"))))
 
-ui <- navbarPage(
-  title = brand, id = "nav", windowTitle = "QuantCompass",
-  theme = bslib::bs_theme(version = 5, primary = "#2a78d6"),
-  header = tags$head(tags$link(rel = "icon", type = "image/svg+xml", href = "logo.svg"),
-    tags$link(rel = "stylesheet", href = "quantcompass.css"), tags$script(src = "quantcompass.js")),
+ai_drawer <- div(class = "offcanvas offcanvas-end qc-ai-drawer", tabindex = "-1", id = "qc-ai", `aria-labelledby` = "qc-ai-title",
+  div(class = "offcanvas-header", h5(class = "offcanvas-title", id = "qc-ai-title", "AI help (optional)"),
+    tags$button(type = "button", class = "btn-close", `data-bs-dismiss` = "offcanvas", `aria-label` = "Close")),
+  div(class = "offcanvas-body", uiOutput("ai_page")))
 
-  tabPanel("1. Data & codebook",
-    fluidRow(column(5,
+ui <- navbarPage(
+  title = brand, id = "nav", windowTitle = "QuantCompass", selected = "s1",
+  theme = bslib::bs_theme(version = 5, primary = "#2a78d6"),
+  header = tagList(tags$head(tags$link(rel = "icon", type = "image/svg+xml", href = "logo.svg"),
+      tags$link(rel = "stylesheet", href = "quantcompass.css"), tags$script(src = "quantcompass.js")),
+    div(id = "qc-tools", class = "qc-tools",
+      tags$button(type = "button", class = "qc-chip", id = "qc-ai-chip", `data-bs-toggle` = "offcanvas", `data-bs-target` = "#qc-ai",
+        title = "Optional: let an AI model suggest codebook descriptions or hypothesis breakdowns, only when you ask", uiOutput("ai_chip", inline = TRUE)),
+      tags$button(type = "button", class = "qc-chip qc-chip-plain", id = "qc-sum-toggle", title = "Show or hide the summary panel", "Summary")),
+    ai_drawer),
+  footer = tagList(
+    tags$aside(id = "qc-summary", class = "qc-summary", div(class = "qs-title", "Your selections", span(class = "qs-sub", "click a step to go there")), uiOutput("qc_summary")),
+    div(id = "qc-footer", class = "qc-footer", uiOutput("qc_footer"))),
+
+  step_tab(1, "Load your data file and, if you have it, the codebook. Then check the ⚠ items in the codebook check on the right.",
+    split2(tagList(
       card(h5("Your data file"), note("CSV, TSV or TXT (any encoding, incl. SoSci Survey exports), Excel, OpenDocument, SPSS (.sav), Stata (.dta) or SAS. The file stays on your computer."),
         fileInput("file", NULL, buttonLabel = "Choose data file...", accept = c(".csv", ".tsv", ".txt", ".xlsx", ".xls", ".ods", ".sav", ".zsav", ".por", ".dta", ".sas7bdat", ".xpt")),
         uiOutput("sheet_ui"), uiOutput("data_info")),
@@ -35,28 +59,26 @@ ui <- navbarPage(
         fileInput("cbfile", NULL, buttonLabel = "Choose codebook...", accept = c(".pdf", ".docx", ".xlsx", ".xls", ".csv", ".txt", ".html", ".htm", ".qsf", ".lss", ".sav", ".dta")),
         uiOutput("cb_embedded_ui"), uiOutput("cb_info"), uiOutput("cb_ai_ui")),
       card(h5("Friendly names"), note("Readable names for columns and categories. They appear in every sentence, table and chart."), uiOutput("label_ui"))),
-    column(7,
+    tagList(
       card(h5("Codebook check"), note("✓ matches the codebook  ⚠ needs your decision  ✗ not in the codebook. Nothing marked ⚠ is applied unless you tick it."),
         uiOutput("cb_check_ui")),
       card(h5("Survey rules found in the codebook"), uiOutput("rules_ui")),
       card(h5("First rows"), div(style = "overflow-x:auto", tableOutput("head_tbl")))))),
 
-  tabPanel("2. Prepare",
+  step_tab(2, "Decide which cases to exclude (A-C) and build your scales and groups (D-E). Every choice is listed in the summary panel.",
     uiOutput("prep_gate"),
-    fluidRow(column(6,
+    split2(tagList(
       card(h5("A. Exclude cases"), note("Suggested from the survey's own rules. Switch any step off or on; they are applied in this order."), uiOutput("excl_ui")),
       card(h5("B. Skip-logic and rule-break check"), note("Only rules defined in your survey are checked: skip/filter logic and valid answer codes."), uiOutput("rb_ui")),
       card(h5("C. Exclude cases by ID"), uiOutput("manual_ui"))),
-    column(6,
+    tagList(
       card(h5("D. Scales"), note("Combine items into one score. Check each item's answer direction before averaging."), uiOutput("scales_ui")),
-      card(h5("E. Groups and recodes"), note("Build group variables from conditions, e.g. 'ES01 is 1,2 and ES02 is 1'. A case gets the first category whose condition it meets."), uiOutput("groups_ui")),
-      card(actionButton("to_gate", "Continue to the final data check", class = "btn-run"))))),
+      card(h5("E. Groups and recodes"), note("Build group variables from conditions, e.g. 'ES01 is 1,2 and ES02 is 1'. A case gets the first category whose condition it meets."), uiOutput("groups_ui"))), "1fr 1fr")),
 
-  tabPanel("3. Final data", uiOutput("gate_ui")),
-  tabPanel("4. Describe", uiOutput("describe_ui")),
-  tabPanel("5. Hypotheses", uiOutput("hyp_ui")),
-  tabPanel("6. Results", uiOutput("results_ui")),
-  tabPanel("AI help (optional)", fluidRow(column(7, uiOutput("ai_page"))))
+  step_tab(3, "Check the numbers of your final dataset. Nothing is analysed until you confirm it.", fill("gate_ui")),
+  step_tab(4, "Optional: describe the sample, make Table 1 and check the reliability of your scales.", fill("describe_ui")),
+  step_tab(5, "Paste your hypotheses, check each breakdown on the right, confirm it, then run them.", fill("hyp_ui")),
+  step_tab(6, "Decisions, reports, R scripts and a methods section for every hypothesis.", fill("results_ui"))
 )
 
 server <- function(input, output, session) {
@@ -64,14 +86,14 @@ server <- function(input, output, session) {
     labels = list(), level_labels = list(), accept_na = character(), fixes_nocb = character(),
     excl = list(), rb_decisions = list(), rb_done = FALSE, hint_excl = character(), manual = data.frame(id = character(), reason = character()),
     scales = list(), groups = list(), locked = FALSE, final = NULL, saved = NULL,
-    parts = list(), hyps = list(), results = NULL, desc = NULL, breakdowns = list())
+    parts = list(), hyps = list(), results = NULL, desc = NULL, breakdowns = list(), ran_hyps = NULL, rel = NULL, seen = "s1")
 
   # ======================================================================= 1. data & codebook
   observeEvent(input$file, {
     run <- format(Sys.time(), "%Y-%m-%d_%H%M%S"); d <- file.path(results_root, run); dir.create(file.path(d, "data"), recursive = TRUE)
     path <- file.path(d, "data", input$file$name); file.copy(input$file$datapath, path, overwrite = TRUE)
     rv$path <- path; rv$out_dir <- d; rv$sheet <- if (qc_file_kind(path) == "excel") readxl::excel_sheets(path)[1] else NULL
-    rv$cb <- NULL; rv$locked <- FALSE; rv$results <- NULL; rv$parts <- list(); rv$hyps <- list(); rv$scales <- list(); rv$groups <- list()
+    rv$cb <- NULL; rv$locked <- FALSE; rv$results <- NULL; rv$parts <- list(); rv$hyps <- list(); rv$scales <- list(); rv$groups <- list(); rv$desc <- NULL; rv$rel <- NULL; rv$ran_hyps <- NULL
     rv$manual <- data.frame(id = character(), reason = character()); rv$rb_decisions <- list(); rv$rb_done <- FALSE
     load_raw()
     emb <- tryCatch(qc_embedded_codebook(path), error = function(e) NULL)
@@ -266,8 +288,7 @@ server <- function(input, output, session) {
   observeEvent(input$gr_del, { rv$groups <- rv$groups[-input$gr_del]; rv$locked <- FALSE })
 
   cur_res <- function(scales_only = FALSE) qc_apply_prep(rv$raw, prep_obj(groups = if (scales_only) list() else rv$groups))
-  observeEvent(input$to_gate, updateNavbarPage(session, "nav", "3. Final data"))
-  observeEvent(input$go_gate, updateNavbarPage(session, "nav", "3. Final data"))
+  observeEvent(input$qc_nav, updateNavbarPage(session, "nav", input$qc_nav))
 
   # ======================================================================= 3. final data gate
   gate <- reactive({ req(rv$raw); p <- prep_obj(); r <- tryCatch(qc_apply_prep(rv$raw, p), error = function(e) list(error = conditionMessage(e)))
@@ -275,7 +296,7 @@ server <- function(input, output, session) {
   output$gate_ui <- renderUI({ if (is.null(rv$raw)) return(card(p("Load your data in step 1 first.")))
     g <- gate(); if (!is.null(g$error)) return(card(p(class = "text-danger", "The preparation could not be applied: ", g$error)))
     s <- g$summary; need_rb <- nrow(rule_breaks()) > 0 && !rv$rb_done
-    tagList(card(h5("This is your final dataset"),
+    split2(card(h5("This is your final dataset"),
       div(class = "gate-n", span(class = "big", s$n), " cases", span(class = "ms-3", s$variables, " variables")),
       h6("How the sample was filtered"), div(class = "flow", lapply(s$flow, div)),
       if (!is.null(s$scales)) tagList(h6("Scales"), tags$table(class = "table table-sm", tags$thead(tags$tr(tags$th("Scale"), tags$th("Measures"), tags$th("Items"), tags$th("Score"), tags$th("alpha"), tags$th("n"), tags$th("M (SD)"))),
@@ -288,17 +309,18 @@ server <- function(input, output, session) {
           actionButton("unlock", "Needs editing", class = "btn-outline-secondary ms-2"))
       else tagList(actionButton("gate_ok", "OK, use this data", class = "btn-success btn-lg", disabled = if (need_rb) NA else NULL),
           actionButton("gate_edit", "Needs editing", class = "btn-outline-secondary btn-lg ms-2"),
-          note("Nothing is analysed until you press OK. After 'Needs editing' you can change steps 2A-2E and come back here."))),
-      card(h5("Preview of the final data"), div(style = "overflow-x:auto", tableOutput("final_head")))) })
+          note("Nothing is analysed until you confirm (here or with 'Confirm data & continue' below). After 'Needs editing' you can change steps 2A-2E and come back here."))),
+      card(h5("Preview of the final data"), note("The first rows, with your scales and groups added as columns."), div(style = "overflow-x:auto", tableOutput("final_head"))), "6fr 6fr") })
   output$final_head <- renderTable({ g <- gate(); req(g$res); h <- utils::head(g$res$data, 5); h[] <- lapply(h, function(x) if (is.numeric(x)) format(x, digits = 4, drop0trailing = TRUE) else as.character(x)); h })
-  observeEvent(input$gate_ok, { g <- gate(); req(g$res)
+  confirm_gate <- function() { g <- gate(); if (is.null(g$res)) return(FALSE)
     rv$final <- list(data = g$res$data, flow = g$res$flow, counts = g$res$counts, prep = g$prep, summary = g$summary)
     rv$saved <- tryCatch(qc_save_prepared(g$res, g$prep, if (is.null(rv$cb)) list(source = "none") else rv$cb,
       if (is.null(rv$cb_check)) data.frame(variable = names(rv$raw), symbol = "", label = "", values = "", missing_codes = "", message = "") else rv$cb_check,
       ctx(), file.path(rv$out_dir, "final_data")), error = function(e) { showNotification(paste("Saving failed:", conditionMessage(e)), type = "error"); NULL })
-    rv$locked <- TRUE; showNotification("Final dataset confirmed and saved.", type = "message") })
-  observeEvent(input$gate_edit, updateNavbarPage(session, "nav", "2. Prepare"))
-  observeEvent(input$unlock, { rv$locked <- FALSE; updateNavbarPage(session, "nav", "2. Prepare") })
+    rv$locked <- TRUE; showNotification("Final dataset confirmed and saved.", type = "message"); TRUE }
+  observeEvent(input$gate_ok, confirm_gate())
+  observeEvent(input$gate_edit, updateNavbarPage(session, "nav", "s2"))
+  observeEvent(input$unlock, { rv$locked <- FALSE; updateNavbarPage(session, "nav", "s2") })
   dlh <- function(key, name) downloadHandler(filename = name, content = function(f) file.copy(rv$saved[[key]], f))
   output$dl_xlsx <- dlh("excel", "final_dataset.xlsx"); output$dl_cb <- dlh("codebook", "codebook_applied.xlsx")
   output$dl_prep <- dlh("script", "prepare_data.R"); output$dl_proj <- dlh("project", "quantcompass_project.json")
@@ -314,13 +336,13 @@ server <- function(input, output, session) {
     t1 <- intersect(c(grep("^DM[0-9]", names(d), value = TRUE), vapply(rv$final$prep$scales, `[[`, "", "name")), names(d))
     t1 <- t1[vapply(t1, function(v) { u <- length(unique(stats::na.omit(d[[v]]))); u >= 2 && (is.numeric(d[[v]]) || is.factor(d[[v]]) || u <= 12) }, logical(1))]   # no free-text or empty columns
     if (!is.null(rv$cb)) t1 <- t1[!vapply(t1, function(v) { e <- rv$cb$vars[[v]]; !is.null(e) && identical(e$kind, "text") }, logical(1))]
-    tagList(card(h5("Describe the final dataset"), note("Tables, charts and a ready-to-paste summary, plus Table 1 for your thesis."),
+    split2(tagList(card(h5("Describe the final dataset"), note("Tables, charts and a ready-to-paste summary, plus Table 1 for your thesis."),
       fluidRow(column(6, selectInput("by", "Split numeric variables by group (optional)", c("No split" = "", named(cand, rv$labels)))),
         column(6, selectizeInput("t1vars", "Variables for Table 1 (sample characteristics)", named(names(d), rv$labels), selected = t1, multiple = TRUE))),
       actionButton("describe", "Describe my dataset", class = "btn-primary")),
       card(h5("Reliability of your scales (Cronbach's alpha)"), note("For every scale with two or more items: alpha, corrected item-total correlations and alpha if an item is deleted, judged against the .70 benchmark. Reversed items are reversed first."),
-        actionButton("rel_run", "Check reliability of all scales", class = "btn-outline-primary"), uiOutput("rel_out")),
-      uiOutput("desc_out")) })
+        actionButton("rel_run", "Check reliability of all scales", class = "btn-outline-primary"), uiOutput("rel_out"))),
+      uiOutput("desc_out"), "5fr 7fr") })
   observeEvent(input$rel_run, { scs <- Filter(function(s) length(s$items) >= 2, rv$final$prep$scales)
     if (!length(scs)) { showNotification("No scale with two or more items. Build scales in step 2D.", type = "warning"); return() }
     c0 <- ctx(); c0$out_dir <- file.path(rv$out_dir, "reliability")
@@ -341,7 +363,7 @@ server <- function(input, output, session) {
     qc_set_labels(ctx())
     rv$desc <- tryCatch({ d <- qc_describe_dataset(ctx(), if (nzchar(input$by)) input$by else NULL)
       d$table1 <- if (length(input$t1vars)) qc_table1(fdata(), input$t1vars) else NULL; d }, error = function(e) list(error = conditionMessage(e))) }) })
-  output$desc_out <- renderUI({ d <- rv$desc; req(d); if (!is.null(d$error)) return(card(p(class = "text-danger", "Something went wrong: ", d$error)))
+  output$desc_out <- renderUI({ d <- rv$desc; if (is.null(d)) return(card(h5("Description"), p(class = "text-muted", "Press 'Describe my dataset' on the left. The summary, Table 1 and the charts appear here."))); if (!is.null(d$error)) return(card(p(class = "text-danger", "Something went wrong: ", d$error)))
     rel <- sub(paste0("^", results_root, "/"), "", d$files[["html"]])
     tagList(card(h5("Ready-to-paste summary"), div(class = "paste", d$paragraph), br(),
       if (!is.null(d$table1)) tagList(h6(d$table1$title), tableOutput("t1_tbl")),
@@ -351,7 +373,7 @@ server <- function(input, output, session) {
 
   # ======================================================================= 5. hypotheses
   output$hyp_ui <- renderUI({ if (!rv$locked) return(locked_card())
-    fluidRow(column(5,
+    split2(tagList(
       card(h5("Paste your hypotheses"), note("One per line, exactly as written in your thesis, e.g. 'H1a: There is a negative association between ...'."),
         textAreaInput("htexts", NULL, rows = 9, placeholder = "H1: ...\nH2a: ...\nH2b: ..."),
         actionButton("dissect", "Break them down", class = "btn-primary"),
@@ -360,8 +382,8 @@ server <- function(input, output, session) {
         uiOutput("mlr_ui")),
       card(h5("Confirmed hypotheses"), uiOutput("confirmed_ui"), hr(),
         actionButton("run", "Run all confirmed hypotheses", class = "btn-run"),
-        note("Each one: assumptions are screened, the test is run, and a Word + HTML report with charts and the exact R script is created."))),
-    column(7, uiOutput("parts_ui"))) })
+        note("Each one: assumptions are screened, the test is run, and a Word + HTML report with charts and the exact R script is created. You can also press 'Run' in the bar below."))),
+      uiOutput("parts_ui")) })
   read_hyp_lines <- function(txt) { ln <- trimws(strsplit(txt, "\n")[[1]]); ln <- ln[nzchar(ln)]
     ln <- sub("^[*\u2022\u2013-]+\\s*", "", ln); ln <- gsub("(?<=^H[0-9])[\u2080-\u2089]+|(?<=^H[0-9][0-9])[\u2080-\u2089]+|(?<=^H[0-9][a-z])[\u2080-\u2089]+", "", ln, perl = TRUE)
     ids <- ifelse(grepl("^H[0-9]+[a-z]?\\s*[:.)-]", ln, ignore.case = TRUE), toupper(sub("^(H[0-9]+[a-z]?).*$", "\\1", ln, ignore.case = TRUE)), paste0("H", seq_along(ln)))
@@ -372,18 +394,20 @@ server <- function(input, output, session) {
     for (b in B) { if (!length(b$parts)) parts[[length(parts) + 1]] <- list(id = b$id, text = b$text, spec = list(goal = "relationship", var1 = NA, var2 = NA), questions = b$questions, expected = "")
       for (pp in b$parts) parts[[length(parts) + 1]] <- list(id = pp$id, text = b$text, spec = pp$spec, questions = b$questions, expected = pp$expected, mode = "recommended", option = 1,
                                                              confidence_label = pp$confidence_label %||% NA) }
-    cfg <- ai_cfg()
-    if (!is.null(cfg)) withProgress(message = "Asking the AI about uncertain hypotheses...", for (b in B) {
-      idx <- which(vapply(parts, function(p) identical(p$text, b$text), logical(1)))
-      unsure <- !length(b$parts) || any(vapply(b$parts, function(pp) !identical(pp$confidence_label, "high"), logical(1)))
-      if (!unsure || !length(idx)) next
-      a <- tryCatch(qc_ai_dissect(b$id, b$text, fdata(), catalog(), cfg, rv$level_labels), error = function(e) list(ok = FALSE, problems = conditionMessage(e)))
-      a$model <- sprintf("%s, %s", cfg$label, cfg$model)
-      k <- idx[1]
-      if (isTRUE(a$ok) && !length(b$parts)) { parts[[k]]$spec <- a$spec; parts[[k]]$expected <- a$expected; parts[[k]]$ai_used <- a$model; parts[[k]]$confidence_label <- "medium"
-        parts[[k]]$questions <- c("Suggested by the AI and checked against your variables. Check the type and every variable before confirming.", a$problems) }
-      else parts[[k]]$ai <- a })
+    for (k in seq_along(parts)) if (any(is.na(unlist(parts[[k]]$spec[intersect(names(parts[[k]]$spec), c("var1", "var2", "outcome", "group"))])))) parts[[k]]$confidence_label <- "low"
     rv$parts <- parts }
+  # ---- AI help on request: one card, or all cards QuantCompass is unsure about
+  ask_ai <- function(ks) { cfg <- ai_cfg()
+    if (is.null(cfg)) { open_ai("Set up AI help first: choose a provider, paste your key and tick 'Allow AI help'. Then press 'Ask AI' again."); return() }
+    ps <- rv$parts
+    withProgress(message = "Asking the AI...", value = 0, for (k in ks) { pt <- ps[[k]]; incProgress(1 / length(ks), detail = pt$id)
+      a <- tryCatch(qc_ai_dissect(pt$id, pt$text, fdata(), catalog(), cfg, rv$level_labels), error = function(e) list(ok = FALSE, problems = conditionMessage(e)))
+      a$model <- sprintf("%s, %s", cfg$label, cfg$model); ps[[k]]$ai <- a })
+    rv$parts <- ps }
+  unsure_parts <- reactive({ which(vapply(rv$parts, function(p) isTRUE(p$confidence_label %in% c("medium", "low")) && !(p$id %in% vapply(rv$hyps, `[[`, "", "id")) && is.null(p$ai_used), logical(1))) })
+  observeEvent(input$pt_ask_ai, ask_ai(input$pt_ask_ai))
+  observeEvent(input$pt_ask_ai_all, { k <- unsure_parts(); if (length(k)) ask_ai(k) })
+  open_ai <- function(msg = NULL) { session$sendCustomMessage("qc_open_ai", list()); if (!is.null(msg)) showNotification(msg, type = "warning", duration = 8) }
   observeEvent(input$dissect, { req(nzchar(input$htexts)); start_breakdown(read_hyp_lines(input$htexts)) })
   observeEvent(input$hfile, { x <- tryCatch(if (grepl("xlsx$", input$hfile$name)) as.data.frame(readxl::read_excel(input$hfile$datapath)) else utils::read.csv(input$hfile$datapath, check.names = FALSE), error = function(e) NULL)
     req(x); nm <- tolower(names(x)); i1 <- grep("^id", nm)[1]; i2 <- grep("hypothes", nm)[1]
@@ -496,8 +520,13 @@ server <- function(input, output, session) {
     if (!is.null(sp$compare) && !is.null(sp$group)) { d <- d[as.character(d[[sp$group]]) %in% sp$compare, , drop = FALSE]; d[[sp$group]] <- factor(as.character(d[[sp$group]]), levels = sp$compare) }
     d }
   output$parts_ui <- renderUI({ ps <- rv$parts; if (!length(ps)) return(card(h5("Breakdown"), p(class = "text-muted", "Paste your hypotheses and press 'Break them down'. Each one is split into its parts, matched to your variables, and given test options with reasons.")))
-    qc_set_labels(ctx())
-    tagList(lapply(seq_along(ps), function(k) { pt <- ps[[k]]; sp <- pt$spec
+    qc_set_labels(ctx()); uk <- unsure_parts(); ai_ready <- !is.null(ai_cfg())
+    tagList(
+      if (length(uk)) div(class = "qc-aibar", span(class = "qc-ai-ico", "\u2726"),
+        div(tags$b(sprintf("%d breakdown(s) need a closer look: %s.", length(uk), paste(vapply(ps[uk], `[[`, "", "id"), collapse = ", "))),
+          div(class = "small", "Check the variables yourself, or ask the AI for a second reading. ", if (!ai_ready) "AI help is not set up yet; the button opens the settings.")),
+        tags$button(type = "button", class = "btn btn-ai btn-sm", onclick = "Shiny.setInputValue('pt_ask_ai_all', Date.now(), {priority:'event'})", sprintf("Ask AI about %s", if (length(uk) == 1) "it" else paste("all", length(uk))))),
+      lapply(seq_along(ps), function(k) { pt <- ps[[k]]; sp <- pt$spec
       ok <- !any(is.na(unlist(sp[intersect(names(sp), c("var1", "var2", "outcome", "group", "mediator", "moderator"))])))
       pd <- if (ok) tryCatch(part_data(sp), error = function(e) NULL) else NULL
       pair <- if (!is.null(pd)) tryCatch(qc_hypothesis_pair(sp, pd, pt$id), error = function(e) NULL) else NULL
@@ -526,7 +555,9 @@ server <- function(input, output, session) {
           conditionalPanel(sprintf("input.pt%d_mode == 'manual'", k), radioButtons(paste0("pt", k, "_opt"), "Your choice", stats::setNames(seq_along(opts), vapply(opts, `[[`, "", "label")), selected = pt$option))),
         div(class = "mt-2", tags$button(type = "button", class = "btn btn-outline-primary btn-sm", "Update", onclick = sprintf("Shiny.setInputValue('pt_update', %d, {priority:'event'})", k)),
           tags$button(type = "button", class = "btn btn-success btn-sm ms-2", if (confirmed) "Confirm again" else "Confirm", onclick = sprintf("Shiny.setInputValue('pt_confirm', %d, {priority:'event'})", k)),
-          tags$button(type = "button", class = "btn btn-outline-danger btn-sm ms-2", "Remove", onclick = sprintf("Shiny.setInputValue('pt_remove', %d, {priority:'event'})", k)))) })) })
+          tags$button(type = "button", class = "btn btn-outline-danger btn-sm ms-2", "Remove", onclick = sprintf("Shiny.setInputValue('pt_remove', %d, {priority:'event'})", k)),
+          tags$button(type = "button", class = "btn btn-ai-outline btn-sm ms-2", title = "Optional second reading by an AI model (only names, labels and the hypothesis text are sent)",
+            "\u2726 Ask AI", onclick = sprintf("Shiny.setInputValue('pt_ask_ai', %d, {priority:'event'})", k)))) })) })
   observeEvent(input$pt_update, { k <- input$pt_update; ps <- rv$parts; ps[[k]]$spec <- spec_from_part(k)
     ps[[k]]$mode <- input[[paste0("pt", k, "_mode")]] %||% "recommended"; ps[[k]]$option <- input[[paste0("pt", k, "_opt")]] %||% 1
     ps[[k]]$expected <- qc_expected_text(ps[[k]]$spec, catalog()); ps[[k]]$confidence_label <- NA; rv$parts <- ps })   # edited by the user: no automatic confidence
@@ -553,25 +584,39 @@ server <- function(input, output, session) {
     if (is.null(cfg) || !cfg$ready) NULL else cfg })
   output$ai_page <- renderUI({
     prov0 <- if (nzchar(ai_env$QC_AI_PROVIDER %||% "") && (ai_env$QC_AI_PROVIDER %in% names(qc_ai_providers))) ai_env$QC_AI_PROVIDER else "gemini"
-    card(h5("AI help (optional, with your own key)"),
-      p("QuantCompass works fully without AI. If you switch this on, an AI model is asked only when QuantCompass is unsure: for codebook entries it could not read and for hypotheses it could not break down with confidence."),
-      tags$ul(class = "small", tags$li("Sent: variable names, codebook labels and texts, your hypotheses. ", tags$b("Never sent: your data values.")),
-        tags$li("The AI only suggests. Every suggestion is checked against your variables and data, and you decide whether to use it."),
-        tags$li("All statistics are computed in R. Reports say where an AI suggestion was used."),
-        tags$li("Your key is used for this session only and never saved. To keep it, write it into a file called .env in the QuantCompass folder (see .env.example); that file is never uploaded.")),
-      checkboxInput("ai_on", "Use AI help when QuantCompass is unsure", FALSE),
+    tagList(
+      p("QuantCompass works fully without AI. AI help is a second opinion that you call yourself, with your own key, only where you want it."),
+      div(class = "qc-when", h6("When to use it"),
+        tags$ul(class = "small",
+          tags$li(tags$b("Step 1, codebook: "), "when the codebook check says some variables could not be described. Press ", tags$em("Ask AI to describe them"), "."),
+          tags$li(tags$b("Step 5, hypotheses: "), "when a breakdown is marked ", span(class = "conf conf-medium", "\u26a0 Check"), " or ", span(class = "conf conf-low", "? Unsure"),
+            ", or the matched variables look wrong. Press ", tags$em("\u2726 Ask AI"), " on that card."),
+          tags$li(tags$b("Not needed: "), "for breakdowns marked ", span(class = "conf conf-high", "\u2713 Sure"), ", and never for the statistics: all results are computed in R."))),
+      div(class = "qc-when", h6("What is sent"),
+        tags$ul(class = "small", tags$li("Variable names, codebook labels and texts, your hypotheses. ", tags$b("Never your data values.")),
+          tags$li("The AI only suggests. Every suggestion is checked against your variables and shown to you; nothing changes until you press ", tags$em("Use the AI suggestion"), "."),
+          tags$li("Reports say where an AI suggestion was used."),
+          tags$li("Your key is used for this session only and never saved. To keep it, write it into a file called .env in the QuantCompass folder (see .env.example); that file is never uploaded."))),
+      h6("Set up"),
       selectInput("ai_provider", "Provider", stats::setNames(names(qc_ai_providers), vapply(qc_ai_providers, `[[`, "", "label")), prov0),
-      uiOutput("ai_fields"), uiOutput("ai_status"),
+      uiOutput("ai_fields"),
+      checkboxInput("ai_on", "Allow AI help in this session (used only when I press an 'Ask AI' button)", FALSE),
+      uiOutput("ai_status"),
       actionButton("ai_test", "Test the connection", class = "btn-outline-primary")) })
+  outputOptions(output, "ai_page", suspendWhenHidden = FALSE)
+  output$ai_chip <- renderUI({ cfg <- ai_cfg()
+    if (is.null(cfg)) tagList(span(class = "qc-ai-ico", "\u2726"), "AI help", span(class = "qc-chip-state off", "off"))
+    else tagList(span(class = "qc-ai-ico", "\u2726"), "AI help", span(class = "qc-chip-state on", "ready")) })
   output$ai_fields <- renderUI({ pv <- input$ai_provider %||% "gemini"; pr <- qc_ai_providers[[pv]]; cfg0 <- qc_ai_config(pv, env = ai_env)
     tagList(if (length(pr$models)) tagList(selectizeInput("ai_model", "Model", c(pr$models), selected = cfg0$model, options = list(create = TRUE)),
         note("Recommended: llama-3.3-70b-instruct or qwen3-30b-a3b-instruct-2507. You can also type another model name. ", tags$a(href = pr$docs, target = "_blank", "Current model list")))
       else textInput("ai_model", "Model (leave empty for the default)", "", placeholder = cfg0$model),
       if (!is.na(pr$key_env)) passwordInput("ai_key", "API key", "", placeholder = if (nzchar(cfg0$key)) "Using the key from your .env file" else "Paste your key (this session only)"),
       if (!is.null(pr$base_env)) textInput("ai_base", "Address of the service", "", placeholder = cfg0$base)) })
-  output$ai_status <- renderUI({ if (!isTRUE(input$ai_on)) return(note("AI help is off."))
+  outputOptions(output, "ai_fields", suspendWhenHidden = FALSE)
+  output$ai_status <- renderUI({ if (!isTRUE(input$ai_on)) return(note("AI help is off. Tick the box above to allow it."))
     cfg <- ai_cfg(); if (is.null(cfg)) return(p(class = "text-danger small", "Enter an API key to use AI help."))
-    div(class = "openq small", tags$b("AI is on. "), qc_ai_notice(cfg)) })
+    div(class = "openq small", tags$b("AI help is ready. "), "It is used only when you press an 'Ask AI' button. ", qc_ai_notice(cfg)) })
   observeEvent(input$ai_test, { cfg <- ai_cfg(); if (is.null(cfg)) { showNotification("Switch AI help on and enter a key first.", type = "warning"); return() }
     r <- tryCatch(qc_ai_chat(cfg, "Answer with JSON only.", 'Return {"ok": true}.'), error = function(e) e)
     if (inherits(r, "error")) showNotification(paste("Connection failed:", conditionMessage(r)), type = "error", duration = 12)
@@ -586,11 +631,11 @@ server <- function(input, output, session) {
     Filter(function(v) { e <- rv$cb$vars[[v]]; !qc_is_system_var(v) && (is.null(e) || is.na(e$label) || !nzchar(e$label) ||
       (is.numeric(d[[v]]) && !length(e$values) && length(unique(stats::na.omit(d[[v]]))) <= 12 && !identical(e$kind, "text"))) }, names(d)) })
   output$cb_ai_ui <- renderUI({ req(rv$cb); g <- cb_gaps(); if (!length(g)) return(NULL)
-    if (is.null(ai_cfg())) return(note(sprintf("%d variable(s) could not be described from the codebook (%s%s). Optional: switch on 'AI help' to ask an AI to read the codebook text for them.",
-      length(g), paste(utils::head(g, 6), collapse = ", "), if (length(g) > 6) ", ..." else "")))
-    tagList(note(sprintf("%d variable(s) could not be described from the codebook.", length(g))),
-      actionButton("cb_ai", sprintf("Ask AI to describe them (%d)", length(g)), class = "btn-outline-primary btn-sm")) })
-  observeEvent(input$cb_ai, { cfg <- ai_cfg(); req(cfg, rv$cb)
+    div(class = "qc-aibar", span(class = "qc-ai-ico", "\u2726"),
+      div(tags$b(sprintf("%d variable(s) could not be described from the codebook", length(g))), div(class = "small", sprintf("%s%s. You can name them yourself under 'Friendly names', or ask the AI to read the codebook text for them (optional).",
+        paste(utils::head(g, 6), collapse = ", "), if (length(g) > 6) ", ..." else ""))),
+      actionButton("cb_ai", "Ask AI to describe them", class = "btn-ai btn-sm")) })
+  observeEvent(input$cb_ai, { cfg <- ai_cfg(); if (is.null(cfg)) { open_ai("Set up AI help first: choose a provider, paste your key and tick 'Allow AI help'."); return() }; req(rv$cb)
     g <- withProgress(message = "Asking the AI to read the codebook...", tryCatch(qc_ai_codebook_gaps(rv$cb, rv$raw, cb_lines(), cfg), error = function(e) e))
     if (inherits(g, "error")) { showNotification(paste("AI help failed:", conditionMessage(g)), type = "error", duration = 12); return() }
     if (!length(g$vars)) { showNotification(paste(c("The AI found no descriptions.", g$problems), collapse = " "), type = "warning"); return() }
@@ -599,7 +644,7 @@ server <- function(input, output, session) {
     set_codebook(cb); showNotification(sprintf("AI described %d variable(s). Check them in the codebook check.", length(g$vars)), type = "message") })
 
   # ======================================================================= 6. run + results
-  observeEvent(input$run, { if (!length(rv$hyps)) { showNotification("Confirm at least one hypothesis first.", type = "warning"); return() }
+  run_all <- function() { if (!length(rv$hyps)) { showNotification("Confirm at least one hypothesis first.", type = "warning"); return() }
     c0 <- ctx(); c0$out_dir <- file.path(rv$out_dir, "analysis"); res <- list(); hs <- rv$hyps
     withProgress(message = "Running analyses", value = 0, {
       for (i in seq_along(hs)) { h <- hs[[i]]; incProgress(1 / (length(hs) + 1), detail = paste(h$id, "- screening assumptions and running the test"))
@@ -612,10 +657,12 @@ server <- function(input, output, session) {
         qc_and(ai_ids), paste(unique(vapply(Filter(function(h) !is.null(h$ai), hs), `[[`, "", "ai")), collapse = "; ")))
       t1 <- if (!is.null(rv$desc$table1)) rv$desc$table1 else tryCatch(qc_table1(fdata(), intersect(c(grep("^DM[0-9]", names(fdata()), value = TRUE), vapply(rv$final$prep$scales, `[[`, "", "name")), names(fdata()))), error = function(e) NULL)
       summ <- tryCatch(qc_summary_report(res, c0, if (!is.null(rv$desc) && is.null(rv$desc$error)) rv$desc else NULL, meth, t1, rv$breakdowns), error = function(e) { showNotification(paste("Summary report:", conditionMessage(e)), type = "error"); NULL }) })
-    rv$results <- list(items = res, summary = summ, methods = meth); updateNavbarPage(session, "nav", "6. Results") })
+    rv$results <- list(items = res, summary = summ, methods = meth); rv$ran_hyps <- hs; updateNavbarPage(session, "nav", "s6") }
+  observeEvent(input$run, run_all())
   output$results_ui <- renderUI({ if (!rv$locked) return(locked_card()); r <- rv$results
-    if (is.null(r)) return(card(p(class = "text-muted", "Confirm and run your hypotheses in step 5 to see results here.")))
-    tagList(card(h5("All results"), p("Everything is saved in: ", tags$code(file.path(rv$out_dir, "analysis"))),
+    if (is.null(r)) return(split1(card(h5("No results yet"), p(class = "text-muted", "Confirm your hypotheses in step 5 and press 'Run'. The results appear here."),
+      tags$button(type = "button", class = "btn btn-primary", onclick = nav_js("s5"), "Go to step 5: Hypotheses"))))
+    split2(tagList(card(h5("All results"), p("Everything is saved in: ", tags$code(file.path(rv$out_dir, "analysis"))),
         if (!is.null(r$summary)) downloadButton("sum_docx", "Summary report with methods section (Word)"),
         actionButton("open_dir", "Open results folder", class = "btn-outline-secondary ms-2"),
         tags$table(class = "table table-sm mt-3", tags$thead(tags$tr(tags$th("ID"), tags$th("Test"), tags$th("Decision"))),
@@ -623,7 +670,7 @@ server <- function(input, output, session) {
             tags$td(if (isTRUE(x$blocked)) span(class = "text-danger", "not run") else span(class = paste("decision", if (isTRUE(x$decision$rejected)) "rej" else "keep"), x$decision$short))))))),
       if (!is.null(r$methods)) card(h5("Methods section (ready to paste and adapt)"), div(class = "paste", r$methods$sample), br(), if (nzchar(r$methods$measures)) div(class = "paste", r$methods$measures), br(), div(class = "paste", r$methods$analysis)),
       card(h5("Optional: check against numbers you already reported"), note("Paste lines such as 'H1a: r = -.47, p < .001'. Each number is looked up in QuantCompass's result for that hypothesis."),
-        textAreaInput("val_txt", NULL, rows = 4), actionButton("val_go", "Compare", class = "btn-outline-primary"), uiOutput("val_out")),
+        textAreaInput("val_txt", NULL, rows = 4), actionButton("val_go", "Compare", class = "btn-outline-primary"), uiOutput("val_out"))),
       lapply(seq_along(r$items), function(i) { x <- r$items[[i]]
         if (isTRUE(x$blocked)) return(card(h5(x$id), p(x$sentence), p(class = "text-danger", x$message)))
         rel <- sub(paste0("^", results_root, "/"), "", x$files[["html"]])
@@ -632,7 +679,7 @@ server <- function(input, output, session) {
           span(class = paste("decision", if (isTRUE(x$decision$rejected)) "rej" else "keep"), x$decision$short),
           p(tags$b("Why this test: "), x$reason), div(class = "paste", x$paragraph), br(),
           downloadButton(paste0("dl_docx_", i), "Word report"), downloadButton(paste0("dl_r_", i), "R script"),
-          tags$details(class = "mt-3", tags$summary("Show full report with charts"), tags$iframe(src = paste0("qcresults/", rel)))) })) })
+          tags$details(class = "mt-3", tags$summary("Show full report with charts"), tags$iframe(src = paste0("qcresults/", rel)))) }), "5fr 7fr") })
   observe({ r <- rv$results; req(r)
     for (i in seq_along(r$items)) local({ j <- i; x <- r$items[[j]]; if (isTRUE(x$blocked)) return()
       output[[paste0("dl_docx_", j)]] <- downloadHandler(filename = basename(x$files[["docx"]]), content = function(f) file.copy(x$files[["docx"]], f))
@@ -648,6 +695,106 @@ server <- function(input, output, session) {
     tags$table(class = "table table-sm mt-2", tags$tbody(rows)) }) })
   observeEvent(input$open_dir, { d <- file.path(rv$out_dir, "analysis")
     if (.Platform$OS.type == "windows") shell.exec(d) else if (Sys.info()[["sysname"]] == "Darwin") system2("open", d) else system2("xdg-open", d, wait = FALSE) })
+  # ======================================================================= step status, Back / Continue bar, summary panel
+  safe <- function(expr, alt = NULL) tryCatch(expr, error = function(e) alt)
+  observeEvent(input$nav, { rv$seen <- union(rv$seen, input$nav) })
+  needs_run <- reactive({ length(rv$hyps) > 0 && (is.null(rv$results) || !identical(rv$ran_hyps, rv$hyps)) })
+  step_info <- reactive({ has <- !is.null(rv$raw)
+    n_rb <- if (has && !is.null(rv$cb)) safe(nrow(rule_breaks()), 0) else 0; rb_open <- n_rb > 0 && !rv$rb_done
+    n_unconf <- sum(!vapply(rv$parts, `[[`, "", "id") %in% vapply(rv$hyps, `[[`, "", "id"))
+    list(
+      s1 = list(done = has, ok = has, state = if (has) "done" else "todo",
+        msg = if (!has) "To do: choose your data file on the left." else if (is.null(rv$cb)) "Data loaded. A codebook is optional but recommended (it labels variables and finds survey rules)."
+              else "Data and codebook loaded. Tick any ⚠ codes you want treated as missing, then continue."),
+      s2 = list(done = has && !rb_open, ok = has, state = if (!has || rb_open) "todo" else if (rv$locked || "s3" %in% rv$seen) "done" else "optional",
+        msg = if (!has) "Load your data in step 1 first." else if (rb_open) sprintf("To do: decide Keep or Exclude for the %d case(s) in B, then press 'Save decisions'.", n_rb)
+              else "Exclusions, scales and groups are optional. Continue when they look right."),
+      s3 = list(done = rv$locked, ok = has && !rb_open, state = if (rv$locked) "done" else "todo",
+        msg = if (!has) "Load your data in step 1 first." else if (rv$locked) "Confirmed. This dataset is used for every analysis."
+              else if (rb_open) "To do: decide the rule breaks in step 2B first." else "To do: check the numbers, then confirm the data. The analysis steps unlock after that."),
+      s4 = list(done = !is.null(rv$desc) && is.null(rv$desc$error), ok = rv$locked, state = if (!rv$locked) "locked" else if (!is.null(rv$desc)) "done" else "optional",
+        msg = if (!rv$locked) "Confirm the final data in step 3 first." else if (!is.null(rv$desc)) "Description done. Continue to your hypotheses."
+              else "Optional: describe the sample and check reliability. You can also continue straight to the hypotheses."),
+      s5 = list(done = !is.null(rv$results) && !needs_run(), ok = rv$locked && (length(rv$hyps) > 0 || !is.null(rv$results)),
+        state = if (!rv$locked) "locked" else if (!is.null(rv$results) && !needs_run()) "done" else "todo",
+        msg = if (!rv$locked) "Confirm the final data in step 3 first." else if (!length(rv$parts)) "To do: paste your hypotheses and press 'Break them down'."
+              else if (!length(rv$hyps)) "To do: check each breakdown on the right and press 'Confirm'."
+              else if (needs_run()) sprintf("%d confirmed%s. Press Run to analyse them.", length(rv$hyps), if (n_unconf) sprintf(", %d not confirmed yet (they are skipped)", n_unconf) else "")
+              else "All confirmed hypotheses have been run."),
+      s6 = list(done = !is.null(rv$results), ok = FALSE, state = if (!is.null(rv$results)) "done" else if (rv$locked) "todo" else "locked",
+        msg = if (is.null(rv$results)) "No results yet. Run your hypotheses in step 5." else sprintf("%d result(s). Everything is saved in your results folder.", length(rv$results$items)))) })
+
+  output$qc_footer <- renderUI({ cur <- input$nav %||% "s1"; ks <- names(qc_steps); i <- match(cur, ks); if (is.na(i)) return(NULL)
+    si <- step_info()[[cur]]; nxt <- if (i < length(ks)) ks[i + 1] else NA
+    next_lab <- if (cur == "s3" && !rv$locked) "Confirm data & continue" else if (cur == "s5" && needs_run()) sprintf("Run %d hypothes%s", length(rv$hyps), if (length(rv$hyps) == 1) "is" else "es")
+      else if (cur == "s5" && is.null(rv$results)) "Run hypotheses"
+      else if (!is.na(nxt)) paste("Continue:", qc_steps[[nxt]]) else NULL
+    ico <- c(done = "✓", todo = "●", optional = "○", locked = "\U0001F512")[[si$state]]
+    div(class = "qc-footer-in",
+      div(class = "qc-f-left", if (i > 1) tags$button(type = "button", class = "btn btn-outline-secondary", onclick = "Shiny.setInputValue('qc_back', Date.now(), {priority:'event'})",
+        HTML("&larr;"), paste(" Back:", qc_steps[[ks[i - 1]]]))),
+      div(class = paste("qc-f-status", si$state), span(class = "qc-f-ico", ico), span(class = "qc-f-step", sprintf("Step %d of 6", i)), span(si$msg)),
+      div(class = "qc-f-right", if (!is.null(next_lab)) tags$button(type = "button", class = paste("btn", if (si$ok) "btn-primary" else "btn-primary disabled"), disabled = if (!si$ok) NA,
+        onclick = "Shiny.setInputValue('qc_next', Date.now(), {priority:'event'})", next_lab, HTML(" &rarr;")))) })
+  observeEvent(input$qc_back, { ks <- names(qc_steps); i <- match(input$nav %||% "s1", ks); if (!is.na(i) && i > 1) updateNavbarPage(session, "nav", ks[i - 1]) })
+  observeEvent(input$qc_next, { ks <- names(qc_steps); cur <- input$nav %||% "s1"; i <- match(cur, ks); if (is.na(i) || i >= length(ks)) return()
+    si <- step_info()[[cur]]; if (!si$ok) { showNotification(si$msg, type = "warning"); return() }
+    if (cur == "s3" && !rv$locked) { if (!isTRUE(confirm_gate())) return() }
+    if (cur == "s5" && needs_run()) { run_all(); return() }
+    updateNavbarPage(session, "nav", ks[i + 1]) })
+  observe({ si <- step_info()
+    session$sendCustomMessage("qc_steps", list(state = lapply(si, `[[`, "state"))) })
+
+  # ---- summary panel: everything chosen so far, always in view
+  qs_sec <- function(k, title, state, ...) { cur <- identical(input$nav %||% "s1", k)
+    div(class = paste("qs-sec", state, if (cur) "cur"),
+      tags$a(href = "#", class = "qs-head", onclick = nav_js(k), span(class = "qs-dot"), span(class = "qs-n", substring(k, 2)), title),
+      div(class = "qs-body", ...)) }
+  qs_row <- function(label, value) if (!is.null(value) && length(value) && !identical(value, "")) div(class = "qs-row", span(class = "qs-l", label), span(class = "qs-v", title = value, value))
+  output$qc_summary <- renderUI({ si <- step_info(); has <- !is.null(rv$raw)
+    exn <- if (has) safe(sum(vapply(prep_obj()$exclusions, function(x) isTRUE(x$on), logical(1))), 0) else 0
+    g <- if (has) safe(gate()) else NULL; n_final <- if (rv$locked) rv$final$summary$n else safe(g$summary$n)
+    ch <- rv$cb_check; tab <- if (!is.null(ch)) table(factor(ch$status, c("ok", "warn", "missing"))) else NULL
+    conf_ids <- vapply(rv$hyps, `[[`, "", "id")
+    cfg <- ai_cfg()
+    tagList(
+      qs_sec("s1", "Data & codebook", si$s1$state,
+        if (!has) div(class = "qs-empty", "No data file yet") else tagList(
+          qs_row("Data", basename(rv$path)), qs_row("Size", sprintf("%d cases · %d columns", nrow(rv$raw), ncol(rv$raw))),
+          qs_row("Codebook", if (is.null(rv$cb)) "none" else sprintf("%d variables · %d rules", length(rv$cb$vars), length(rv$cb$rules))),
+          if (!is.null(tab)) qs_row("Check", sprintf("✓ %d  ⚠ %d  ✗ %d", tab[["ok"]], tab[["warn"]], tab[["missing"]])),
+          if (length(rv$accept_na)) qs_row("Missing codes", sprintf("set for %d variable(s)", length(rv$accept_na))))),
+      qs_sec("s2", "Prepare", si$s2$state,
+        if (!has) div(class = "qs-empty", "Waiting for data") else tagList(
+          qs_row("Exclusion rules", sprintf("%d of %d on", exn, length(rv$excl))),
+          qs_row("Rule check", if (!is.null(rv$cb) && safe(nrow(rule_breaks()), 0) > 0) (if (rv$rb_done) "decided" else "open") else "nothing to decide"),
+          qs_row("Excluded by ID", if (nrow(rv$manual)) as.character(nrow(rv$manual)) else "none"),
+          qs_row("Scales", if (length(rv$scales)) paste(vapply(rv$scales, `[[`, "", "name"), collapse = ", ") else "none"),
+          qs_row("Groups", if (length(rv$groups)) paste(vapply(rv$groups, `[[`, "", "name"), collapse = ", ") else "none"))),
+      qs_sec("s3", "Final data", si$s3$state,
+        if (!has) div(class = "qs-empty", "Waiting for data") else tagList(
+          qs_row("Cases", if (is.null(n_final)) "-" else as.character(n_final)),
+          qs_row("Status", if (rv$locked) "✓ confirmed" else "not confirmed yet"))),
+      qs_sec("s4", "Describe", si$s4$state,
+        if (!rv$locked) div(class = "qs-empty", "Unlocks after step 3") else tagList(
+          qs_row("Summary", if (!is.null(rv$desc) && is.null(rv$desc$error)) "✓ created" else "not yet (optional)"),
+          qs_row("Table 1", if (!is.null(rv$desc$table1)) sprintf("%d variables", length(input$t1vars)) else NULL),
+          qs_row("Reliability", if (length(rv$rel)) sprintf("%d scale(s) checked", length(rv$rel)) else NULL))),
+      qs_sec("s5", "Hypotheses", si$s5$state,
+        if (!rv$locked) div(class = "qs-empty", "Unlocks after step 3") else if (!length(rv$parts)) div(class = "qs-empty", "None entered yet")
+        else tagList(qs_row("Confirmed", sprintf("%d of %d", sum(vapply(rv$parts, `[[`, "", "id") %in% conf_ids), length(rv$parts))),
+          div(class = "qs-hyps", lapply(rv$parts, function(pt) { ok <- pt$id %in% conf_ids; cl <- pt$confidence_label %||% NA
+            span(class = paste("qs-h", if (ok) "ok" else if (isTRUE(cl %in% c("medium", "low"))) "check" else "open"),
+              title = if (ok) "confirmed" else if (isTRUE(cl %in% c("medium", "low"))) "needs a closer look" else "not confirmed yet", pt$id) })))),
+      qs_sec("s6", "Results", si$s6$state,
+        if (is.null(rv$results)) div(class = "qs-empty", "Not run yet") else { it <- Filter(function(x) !isTRUE(x$blocked), rv$results$items)
+          tagList(qs_row("Run", sprintf("%d hypothes%s", length(rv$results$items), if (length(rv$results$items) == 1) "is" else "es")),
+            qs_row("H0 rejected", sprintf("%d of %d", sum(vapply(it, function(x) isTRUE(x$decision$rejected), logical(1))), length(it))),
+            if (needs_run()) div(class = "qs-warn", "Hypotheses changed since the last run.")) }),
+      div(class = "qs-sec ai", tags$a(href = "#", class = "qs-head", onclick = "QC.openAI(); return false;", span(class = "qc-ai-ico", "✦"), "AI help"),
+        div(class = "qs-body", qs_row("Status", if (is.null(cfg)) "off (optional)" else "ready"), if (!is.null(cfg)) qs_row("Model", sprintf("%s", cfg$model)),
+          qs_row("Used for", { u <- c(if (any(grepl("described by AI", rv$cb$problems %||% character()))) "codebook", if (any(vapply(rv$hyps, function(h) !is.null(h$ai), logical(1)))) "hypotheses")
+            if (length(u)) paste(u, collapse = ", ") else "nothing yet" })))) })
 }
 
 shinyApp(ui, server)
