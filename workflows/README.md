@@ -1,16 +1,14 @@
-# Workflows (SOPs)
+# Workflow
 
-The fixed pipeline the app follows. Order is enforced in code (a state machine), not decided by an AI.
-AI may only act where marked **[AI optional]**; the engine tools have the final say.
+The fixed pipeline the app follows. The order is enforced in code, not decided by an AI. The AI assistant (optional, the user's own key) may suggest and, with the user's permission, make checked changes; the engine has the final say.
 
-| # | Step | Tool (engine) | User checkpoint | AI role |
+| # | Step | Engine | User checkpoint | AI role (optional) |
 |---|---|---|---|---|
-| 01 | **Profile**: list sheets, user picks one; detect types, missing codes, decimal commas, item batteries; verdict ready / needs fixing / blocked | `qc_sheets`, `qc_read`, `qc_profile` | Pick sheet | - |
-| 02 | **Intake**: purpose, research question, hypotheses (3-5 short questions) | - | Answer questions | [AI optional] rephrase questions, parse hypotheses into goals |
-| 03 | **Map**: each hypothesis -> goal -> columns; confirm variable types | `qc_vartype` | Confirm types + mapping | [AI optional] suggest column matches |
-| 04 | **Feasibility + suggestions**: valid tests, recommended vs alternative, warnings or block with "do this instead" | `qc_suggest` | Choose a test | [AI optional] phrase the explanation |
-| 05 | **Run**: fill vetted template, save script, run that exact file | `qc_render`, `qc_run` | - | - |
-| 06 | **Report**: APA sentence, tables, charts, appendix script, disclosure statement | template `result` | Download | - |
-| 07 | **Explain**: plain language -> formula with the user's numbers -> real-life example, cited | open-textbook index | Ask | [AI optional] write explanation from retrieved passages only |
+| 1 | **Data & codebook**: read any data and codebook format; check every variable against the codebook; read scale definitions and screening rules | `qc_read`, `qc_read_any_codebook`, `qc_codebook_check` | Decide the ⚠ items | Describes variables the codebook leaves unclear (checked against the data) |
+| 2 | **Hypotheses & variables**: read the hypotheses as written; type, direction, H1/H0; recommend the column or scale for each role | `qc_read_hyp_text`, `qc_dissect`, `qc_measure_candidates`, `qc_recommend_roles` | Confirm each hypothesis | Reads each hypothesis and recommends variables; never adds or removes hypotheses unless asked |
+| 3 | **Prepare data**: exclusions, skip-logic check, case IDs, scales, groups; final data gate | `qc_exclusion_suggestions`, `qc_apply_prep` | Confirm the final data | Sets up exclusions, scales or groups on request |
+| 4 | **Describe & reliability**: descriptives, Table 1, Cronbach's alpha | templates `descriptives`, `reliability_alpha` | - | Explains |
+| 5 | **Assumption checks**: screening and the test chosen by the rules | `qc_screen` (assumptions), `qc_suggest` (rules) | Keep or switch to the alternative test | Explains |
+| 6 | **Run & report**: fill the vetted template, run that exact file, write the reports and the methods section | `qc_run_hypothesis` | Download | Explains the results |
 
-Rules for every step: never send raw data to an AI; check every number an AI writes against the R result; log every change made to the data.
+Rules for every step: R computes every number; every AI suggestion is checked against the data before the user sees it; every change is recorded in the preparation script; what the AI may see is the user's setting.
