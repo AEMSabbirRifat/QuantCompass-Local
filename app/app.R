@@ -90,7 +90,7 @@ ui <- navbarPage(
       card(h5("A. Exclude cases"), note("Suggested from the survey's own rules. Switch any step off or on; they are applied in this order."), uiOutput("excl_ui")),
       card(h5("B. Skip-logic and rule-break check"), note("Only rules defined in your survey are checked: skip/filter logic and valid answer codes."), uiOutput("rb_ui")),
       card(h5("C. Exclude cases by ID"), uiOutput("manual_ui")),
-      card(h5("E. Groups and recodes (optional)"), note("Build group variables from conditions, e.g. 'ES01 is 1,2 and ES02 is 1'. A case gets the first category whose condition it meets."), uiOutput("groups_ui"))),
+      card(h5("E. Groups and recodes (optional)"), note("Build group variables from conditions, e.g. 'Q12 is 1,2 and Q13 is 1'. A case gets the first category whose condition it meets."), uiOutput("groups_ui"))),
     tagList(
       uiOutput("gate_ui"),
       card(h5("D. Scales"), note("The scales your hypotheses use are already here. Check the items and the reversed ones; you can also build more."), uiOutput("scales_ui"))), "1fr 1fr")),
@@ -260,7 +260,7 @@ server <- function(input, output, session) {
           actionButton(paste0("sg_use_", i), "Use as starting point", class = "btn-sm btn-outline-primary",
             onclick = sprintf("Shiny.setInputValue('sg_use', %d, {priority:'event'})", i))) })),
       hr(), tags$b("Build or edit a scale"),
-      fluidRow(column(6, textInput("sc_name", "Short name (no spaces)", placeholder = "e.g. fin_stress")), column(6, textInput("sc_label", "What it measures", placeholder = "e.g. subjective financial stress"))),
+      fluidRow(column(6, textInput("sc_name", "Short name (no spaces)", placeholder = "e.g. stress_mean")), column(6, textInput("sc_label", "What it measures", placeholder = "e.g. subjective financial stress"))),
       selectizeInput("sc_items", "Items", named(num, rv$labels), multiple = TRUE),
       selectizeInput("sc_rev", "Reverse-code these items", named(num, rv$labels), multiple = TRUE),
       fluidRow(column(6, selectInput("sc_method", "Score", c("Mean of items" = "mean", "Sum of items" = "sum", "WHO-5 index 0-100" = "who5"))),
@@ -294,8 +294,8 @@ server <- function(input, output, session) {
           actionLink(paste0("gr_del_", i), "remove", onclick = sprintf("Shiny.setInputValue('gr_del', %d, {priority:'event'})", i))) }))),
       fluidRow(column(6, textInput("gr_name", "Short name (no spaces)", placeholder = "e.g. job_type")), column(6, textInput("gr_label", "What it describes", placeholder = "e.g. employment situation"))),
       lapply(1:4, function(k) fluidRow(column(4, textInput(paste0("gr_l", k), paste("Category", k), placeholder = c("Field-related job", "Unskilled job", "Not working, seeking", "")[k])),
-        column(8, textInput(paste0("gr_c", k), "Condition", placeholder = c("ES01 is 1,2 and ES02 is 1", "ES01 is 1,2 and ES02 is 3", "ES01 is 3", "")[k])))),
-      note("Conditions: VARIABLE is 1,2 | is not 3 | < 5.5 | >= 2 | is missing | is answered, joined with 'and'. Scales you built can be used (e.g. fin_stress < 5.5)."),
+        column(8, textInput(paste0("gr_c", k), "Condition", placeholder = c("Q12 is 1,2 and Q13 is 1", "Q12 is 1,2 and Q13 is 2", "Q12 is 3", "")[k])))),
+      note("Conditions: VARIABLE is 1,2 | is not 3 | < 5.5 | >= 2 | is missing | is answered, joined with 'and'. Scales you built can be used (e.g. stress_mean < 3)."),
       uiOutput("gr_codes"), actionButton("gr_add", "Add group variable", class = "btn-primary")) })
   output$gr_codes <- renderUI({ req(rv$raw); vs <- names(rv$level_labels)
     tags$details(tags$summary("Show answer codes"), div(class = "small codes", lapply(vs, function(v) div(tags$code(v), " ", paste(names(rv$level_labels[[v]]), "=", rv$level_labels[[v]], collapse = "; "))))) })
@@ -550,7 +550,7 @@ server <- function(input, output, session) {
       conditionalPanel(sprintf("input['%s'] == '__own'", pid("pick")),
         selectizeInput(pid("own"), "Your column(s): one column, or several items to build a scale from them", allv, selected = keep(pid("own"), NULL), multiple = TRUE, options = list(placeholder = "Type to search your columns...")),
         div(class = "qc-say", tags$label(class = "small text-muted", `for` = pid("say"), "...or describe it in your own words - the AI assistant sets it up:"),
-          div(class = "d-flex gap-2", tags$input(type = "text", class = "form-control form-control-sm", id = pid("say_txt"), placeholder = "e.g. the six well-being items WB01 to WB06, averaged"),
+          div(class = "d-flex gap-2", tags$input(type = "text", class = "form-control form-control-sm", id = pid("say_txt"), placeholder = "e.g. the five items Q20 to Q24, averaged"),
             tags$button(type = "button", class = "btn btn-ai-outline btn-sm", onclick = sprintf("QC.askFrom('%s', %s)", pid("say_txt"),
               jsonlite::toJSON(sprintf("For %s, the %s should be: ", pt$id, tolower(r$label)), auto_unbox = TRUE)), "\u2726 Set it up"))))) }
   # how a construct is measured: the scale, its scoring and every item (with the question, reversed or not) - editable
@@ -614,7 +614,7 @@ server <- function(input, output, session) {
       prediction = textInput(id("dirs"), "Expected direction per predictor (optional)", value = if (length(sp$directions)) paste(names(sp$directions), sp$directions, collapse = ", ") else "", placeholder = "e.g. WUC negative, WUF positive"),
       NULL)
     tagList(body,
-      textInput(id("subset"), "Only these cases (optional condition)", value = if (is.null(sp$subset)) "" else sp$subset$text, placeholder = "e.g. ES01 is 1,2"),
+      textInput(id("subset"), "Only these cases (optional condition)", value = if (is.null(sp$subset)) "" else sp$subset$text, placeholder = "e.g. Q12 is 1,2"),
       checkboxInput(id("onesided"), "Test one-sided (only if the direction was planned before collecting the data)", value = !is.null(sp$alternative) && sp$alternative != "two.sided")) }
   output$parts_ui <- renderUI({ ps <- rv$parts
     if (!length(ps)) return(card(h5("Recommendations"), p(class = "text-muted", "Write your hypotheses on the left and press 'Recommend variables'. For each hypothesis you get:"),
