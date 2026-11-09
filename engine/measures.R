@@ -60,7 +60,7 @@ qc_measure_candidates <- function(data, cb = NULL, labels = list(), taken = name
       reverse_note = setdiff(auto_rev, d$reverse), preset = if (identical(d$method, "who5")) "who5" else NA)
     defined <- c(defined, d$items) }
   vs <- setdiff(vs, defined)
-  # 2. items under the same codebook heading, or with the same name stem (FC01, FC02 ... / X_01, X_02 ...)
+  # 2. items under the same codebook heading, or with the same name stem (AB01, AB02 ... / X_01, X_02 ...)
   stem_of <- function(v) sub("_?[0-9]+$", "", v)
   key <- vapply(vs, function(v) { k <- qc_construct_of(lab_of(v)); if (is.na(k)) paste0("#stem:", stem_of(v)) else k }, "")
   for (k in unique(key[duplicated(key)])) {

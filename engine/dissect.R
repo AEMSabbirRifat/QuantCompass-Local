@@ -365,7 +365,7 @@ qc_dissect <- function(id, text, data, cat) {
       if (max(w) > 0 && (is.null(best) || max(w) > best$s)) best <- list(v = cand$variable[i], level = names(lv)[which.max(w)], lab = lv[[which.max(w)]], s = max(w)) }
     if (!is.null(best) && best$s >= .5) for (i in seq_along(parts))
       parts[[i]]$spec$subset <- list(cond = list(list(var = best$v, op = "is", values = best$level)), label = sprintf("%s only", p$among), text = sprintf("%s is %s", best$v, best$level))
-    else questions <- c(questions, sprintf("The hypothesis is about '%s' only. Write the condition in 'Only these cases' below (e.g. ES01 is 1,2).", p$among))
+    else questions <- c(questions, sprintf("The hypothesis is about '%s' only. Write the condition in 'Only these cases' below (e.g. Q12 is 1,2).", p$among))
   }
   # labels and expected outcomes
   for (i in seq_along(parts)) {

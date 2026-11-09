@@ -1,9 +1,9 @@
-# Definitions a codebook writes down in words: how scales are scored ("Financial strain (FC_MEAN): recode FC03 (6 - x);
-# mean of FC01-FC05") and how the sample was screened ("S1 Incomplete | FINISHED = 1 | 8 removed | 184 remaining").
+# Definitions a codebook writes down in words: how scales are scored ("Money stress (MS_MEAN): recode MS03 (6 - x);
+# mean of MS01-MS04") and how the sample was screened ("S1 Incomplete | FINISHED = 1 | 6 removed | 144 remaining").
 # Both are read from the codebook's text (PDF/TXT lines, or table rows of Word/Excel files) and checked against the data.
 
-# Variables named in a piece of text: single names, ranges (WB01-WB06, TIME001-TIME006), name families ("FC, WL, WB
-# items") and reverse-coded copies (FC03R, FC03_r) that point back to their item.
+# Variables named in a piece of text: single names, ranges (SL01-SL05, TIME001-TIME006), name families ("MS, SL, AB
+# items") and reverse-coded copies (MS03R, MS03_r) that point back to their item.
 qc_expand_vars <- function(txt, known) {
   out <- character(); rev <- character()
   if (is.null(txt) || is.na(txt) || !nzchar(txt)) return(list(vars = out, reverse = rev))
@@ -22,7 +22,7 @@ qc_expand_vars <- function(txt, known) {
     base <- sub("(_r|_R|R|_rev|rev)$", "", t)
     if (base != t && base %in% known) { out <- c(out, base); rev <- c(rev, base); next }
   }
-  # families: "FC, WL, WB items" / "the FC items"
+  # families: "MS, SL, AB items" / "the MS items"
   fm <- regmatches(txt, gregexpr("\\b([A-Z]{2,6})\\b(?=(?:\\s*(?:,|and|&)\\s*[A-Z]{2,6}\\b)*\\s*(?:items|scale|questions)\\b)", txt, perl = TRUE))[[1]]
   fm <- unique(c(fm, if (grepl("(?i)\\bitems\\b", txt, perl = TRUE)) regmatches(txt, gregexpr("\\b[A-Z]{2,6}\\b(?=\\s*(?:,|and|&|\\)|items))", txt, perl = TRUE))[[1]]))
   for (f in fm) { fam <- known[grepl(sprintf("^%s_?[0-9]+$", f), known)]; out <- c(out, fam[order(num(fam))]) }
@@ -42,8 +42,8 @@ qc_cb_records <- function(lines) {
   rec[nzchar(rec)]
 }
 
-# Items marked as reverse-keyed anywhere in the codebook: "FC03 (R)", a label ending in "Reverse-keyed",
-# "Recode FC03 (6 - x)", "FC03R  FC03 reverse-coded (6 - FC03)".
+# Items marked as reverse-keyed anywhere in the codebook: "MS03 (R)", a label ending in "Reverse-keyed",
+# "Recode MS03 (6 - x)", "MS03R  MS03 reverse-coded (6 - MS03)".
 qc_cb_reverse_marks <- function(lines, known, cb = NULL) {
   txt <- paste(lines, collapse = "\n"); out <- character()
   for (v in known) {
@@ -143,7 +143,7 @@ qc_screen_rule <- function(lab, rule, lines, known) {
   list(cond = NA_character_, kind = "unread", vars = character(), keep_text = rule)
 }
 
-# "FC01, FC02, FC03, WL01" -> "FC01-FC03, WL01" (short form for labels)
+# "MS01, MS02, MS03, SL01" -> "MS01-MS03, SL01" (short form for labels)
 qc_span <- function(vs) {
   st <- sub("_?[0-9]+$", "", vs); out <- character()
   for (s in unique(st)) { g <- vs[st == s]; out <- c(out, if (length(g) > 2) paste0(g[1], "-", g[length(g)]) else paste(g, collapse = ", ")) }

@@ -161,7 +161,7 @@ qc_assist_system <- function() paste(
   "{\"type\":\"set_hypothesis\",\"id\",\"goal\":\"relationship|difference|paired_difference|association|prediction|mediation|moderation\",",
   "\"var1\",\"var2\",\"outcome\",\"group\",\"mediator\",\"moderator\",\"predictors\":[..],\"controls\":[..],\"direction\":\"positive|negative|none\",\"higher_group\",\"stronger\"},",
   "{\"type\":\"confirm_hypothesis\",\"id\"}, {\"type\":\"confirm_data\"}, {\"type\":\"run_analyses\"}, {\"type\":\"go_to_step\",\"step\":1-6}.",
-  "Use scale columns (e.g. FC_MEAN) for constructs measured by several items, never a single item.",
+  "Use scale columns (e.g. STRESS_MEAN) for constructs measured by several items, never a single item.",
   "\nAnswer with ONE JSON object only: {\"reply\": \"your answer in Markdown\", \"lookups\": [], \"actions\": []}.",
   "If you request lookups, leave actions empty; you will get the lookup results and answer again.")
 

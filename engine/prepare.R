@@ -279,11 +279,11 @@ qc_save_prepared <- function(res, prep, cb, check, ctx, out_dir) {
   c(excel = xl, codebook = cbx, script = script, project = proj)
 }
 
-# Plain-language conditions, e.g. "ES01 is 1,2 and fin_stress < 5.5" or "DM06 is not 1".
+# Plain-language conditions, e.g. "Q12 is 1,2 and stress < 5.5" or "Q7 is not 1".
 # Returns a list of conditions for qc_cond_code(), or an error message naming the problem.
 qc_parse_condition_text <- function(txt, data) {
   parts <- trimws(strsplit(txt, "\\s+and\\s+", perl = TRUE)[[1]]); parts <- parts[nzchar(parts)]
-  if (!length(parts)) return(list(error = "Write at least one condition, e.g. ES01 is 1,2"))
+  if (!length(parts)) return(list(error = "Write at least one condition, e.g. Q12 is 1,2"))
   out <- list()
   for (p in parts) {
     m <- regmatches(p, regexec("^([A-Za-z][A-Za-z0-9_.]*)\\s+(is not|is missing|is answered|is|=|!=|<=|>=|<|>)\\s*(.*)$", p))[[1]]
